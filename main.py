@@ -201,7 +201,7 @@ class IndexGenerator:
             "w", encoding="utf-8") as f:
             f.write(html)
         # GitHub Pages 需要根目录的 index.html
-        with open("index.html", "w", encoding="utf-8") as f:
+        with open("index.htm", "w", encoding="utf-8") as f:
             f.write(html)
         print("Saved OK (root index.html too)")
 

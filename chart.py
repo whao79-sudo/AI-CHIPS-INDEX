@@ -76,7 +76,7 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=55, scale=1, offset=0;
+var pd=45, scale=1, offset=0;
 
 function resize(){{
   var r = c.parentElement.getBoundingClientRect();

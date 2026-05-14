@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Chip Index - Chart.js K线图版
+AI Chip Index - SVG K线图版（无外部依赖，手机友好）
 """
 import pandas as pd, numpy as np, requests, yaml, os, sys, json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -38,13 +38,13 @@ class IndexGenerator:
         try:
             r = requests.get(url, timeout=timeout, headers={"User-Agent":"Mozilla/5.0"})
             r.raise_for_status(); data = r.json()
-            if not data: return None
+            if not data: return
             df = pd.DataFrame(data).rename(columns={"day":"date","open":"open","high":"high","low":"low","close":"close","volume":"volume"})
             for c in ["open","high","low","close","volume"]: df[c] = pd.to_numeric(df[c], errors='coerce')
             df["code"]=code; df["amount"]=df["volume"]*df["close"]
             return df[["date","code","open","high","low","close","volume","amount"]]
         except Exception as e:
-            print("Fail {}: {}".format(code, e)); return None
+            print("  Fail {}: {}".format(code, e))
 
     def fetch_data(self, start_date=None, end_date=None):
         if not start_date: start_date = self.config["output"].get("start_date","2024-01-01")
@@ -55,7 +55,7 @@ class IndexGenerator:
             print("  [{}/{}] {} ({})...".format(i,len(self.stocks),s['name'],s['code']))
             df = self.fetch_stock_data(s["code"])
             if df is not None and len(df)>0: df["name"]=s["name"]; all_df.append(df)
-        if not all_df: return None
+        if not all_df: return
         df = pd.concat(all_df, ignore_index=True)
         return df[(df["date"]>=start_date)&(df["date"]<=end_date)]
 
@@ -63,7 +63,7 @@ class IndexGenerator:
         stocks_df = stocks_df.copy(); stocks_df["date"]=pd.to_datetime(stocks_df["date"])
         stocks_df = stocks_df.sort_values(["code","date"])
         d = stocks_df.groupby(stocks_df["date"].dt.strftime("%Y-%m-%d")).agg({"open":"mean","high":"mean","low":"mean","close":"mean"}).reset_index().rename(columns={"date":"ds"})
-        if len(d)==0: return None
+        if len(d)==0: return
         b = self.index_config["base_value"]
         d["index_value"] = (d["close"]/d["close"].iloc[0]*b).round(2)
         d["daily_return"] = (d["index_value"].pct_change(fill_method=None)*100).round(2)
@@ -74,36 +74,94 @@ class IndexGenerator:
         return d.rename(columns={"ds":"date"})
 
     def gen_html(self, df, title="AI CHIP INDEX"):
-        def ema(data, period):
-            result = []; m = 2/(period+1); ema_val = data[0]
-            for i in range(len(data)):
-                if i < period-1: result.append(None)
-                elif i == period-1:
-                    ema_val = sum(data[:period])/period; result.append(round(ema_val,2))
-                else:
-                    ema_val = (data[i]-ema_val)*m+ema_val; result.append(round(ema_val,2))
-            return result
-        def sma(data, period):
-            result = []
-            for i in range(len(data)):
-                if i < period-1: result.append(None)
-                else: result.append(round(sum(data[i-period+1:i+1])/period,2))
-            return result
-
-        closes = [float(x) for x in df["close"]]
-        dates = [str(x) for x in df["date"]]
-        opens = [float(x) for x in df["open"]]
-        highs = [float(x) for x in df["high"]]
-        lows = [float(x) for x in df["low"]]
-        values = [float(x) for x in df["index_value"]]
-        cret = [float(x) for x in df["cumulative_return"]]
-
-        c5 = ema(closes,5)
-        c50 = sma(closes,50)
-        c100 = sma(closes,100)
+        """纯 SVG K 线图"""
+        dates = df["date"].tolist()
+        opens = df["open"].tolist()
+        highs = df["high"].tolist()
+        lows = df["low"].tolist()
+        closes = df["close"].tolist()
+        values = df["index_value"].tolist()
+        crets = df["cumulative_return"].tolist()
         latest = df.iloc[-1]
 
-        dj = json.dumps({"dates":dates,"o":opens,"h":highs,"l":lows,"c":closes,"v":values,"r":cret,"ma5":c5,"ma50":c50,"ma100":c100})
+        n = len(dates)
+        if n == 0: return "<html><body>No data</body></html>"
+
+        # 计算均线
+        def sma(data, p):
+            r = []; total = 0
+            for i in range(len(data)):
+                total += data[i]
+                if i >= p: total -= data[i-p]
+                r.append(round(total/min(p,i+1), 2) if i >= p-1 else None)
+            return r
+        ma5 = sma(closes, 5); ma50 = sma(closes, 50); ma100 = sma(closes, 100)
+
+        # SVG 尺寸
+        W=1400; H=700; pad=80; pw=W-2*pad; ph=H-2*pad
+        minV=min(lows); maxV=max(highs); rng=maxV-minV or 1
+        def ypos(v): return pad+ph-(v-minV)/rng*ph
+        candle_w = max(2, min(12, pw//n-1))
+        half_w = max(1, candle_w//2)
+
+        # 生成 K 线 SVG
+        candles_svg = ""
+        for i in range(n):
+            x = pad + i*pw//(n-1 if n>1 else 1)
+            yo = ypos(opens[i]); yh = ypos(highs[i]); yl = ypos(lows[i]); yc = ypos(closes[i])
+            color = "#ff4444" if opens[i] < closes[i] else "#00c853"
+            candles_svg += '<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" stroke-width="1.5"/>'.format(x,yh,x,yl,color)
+            candles_svg += '<rect x="{}" y="{}" width="{}" height="{}" fill="{}" rx="1"/>'.format(x-half_w,min(yo,yc),candle_w,abs(yc-yo)+1,color)
+
+        # 叠加均线
+        def line_svg(data, color, width):
+            pts = []
+            for i in range(n):
+                if data[i] is None: continue
+                x = pad + i*pw//(n-1 if n>1 else 1)
+                pts.append("{},{}".format(x,ypos(data[i])))
+            if pts: return '<polyline points="{}" fill="none" stroke="{}" stroke-width="{}"/>'.format(" ".join(pts),color,width)
+            return ""
+
+        # 网格线 + Y 轴标注
+        grid_svg = ""
+        def add_grid(y, label):
+            nonlocal grid_svg
+            v = minV + (1-y/ph)*rng if ph else 0
+            yy = pad + y
+            grid_svg += '<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#333" stroke-width="0.5"/>'.format(pad,yy,pad+pw,yy)
+            grid_svg += '<text x="{}" y="{}" fill="#888" font-size="11" text-anchor="end">{}</text>'.format(pad-5,yy+4,round(v,0))
+        for i in range(5): add_grid(i*ph//4, "")
+
+        # X 轴时间标注（每3个月标一次）
+        x_ticks = ""
+        for i in range(n):
+            if i % 60 == 0 or i == n-1:
+                x = pad + i*pw//(n-1 if n>1 else 1)
+                x_ticks += '<text x="{}" y="{}" fill="#888" font-size="10" text-anchor="middle" transform="rotate(-30,{},{})">{}</text>'.format(x,H-10,x,H-10,dates[i])
+
+        # 统计数字
+        stat_html = ""
+        items = [
+            ("最新点位", str(latest["index_value"])),
+            ("累计涨幅", str(latest["cumulative_return"]) + "%"),
+            ("交易日", str(n)),
+            ("起始", dates[0]),
+        ]
+        for label, val in items:
+            stat_html += '<div class="stat"><div class="v">{}</div><div class="l">{}</div></div>'.format(val, label)
+
+        # 成分股名字
+        stock_names = "、".join([s["name"] for s in self.stocks])
+
+        # 生成完整 HTML
+        ma5_svg = line_svg(ma5, "#ffffff", 1.5)
+        ma50_svg = line_svg(ma50, "#00ff00", 1.5)
+        ma100_svg = line_svg(ma100, "#ff4444", 2)
+
+        border_svg = '<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke="#555" stroke-width="1"/>'.format(pad,pad,pw,ph)
+
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" style="width:100%;height:auto;max-width:{}px">{}{}{}{}{}</svg>'.format(W,H,W,grid_svg,border_svg,candles_svg,ma5_svg+ma50_svg+ma100_svg,x_ticks)
 
         return """<!DOCTYPE html>
 <html lang="zh-CN">
@@ -111,64 +169,38 @@ class IndexGenerator:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>""" + title + """</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.0/dist/chartjs-chart-financial.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0f0f23;color:#e0e0e0;font-family:Arial,sans-serif;padding:10px}
-h1{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+h1{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0;letter-spacing:2px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;max-width:500px;margin-left:auto;margin-right:auto}
 .stat{background:#1a1a3e;padding:12px;border-radius:8px;text-align:center}
 .stat .v{font-size:22px;color:#00d4ff;font-weight:bold}
 .stat .l{font-size:11px;color:#888;margin-top:3px}
-#chart-wrap{background:#1a1a3e;border-radius:8px;padding:10px;margin-bottom:10px}
-#chart{width:100%;height:500px}
-.info{text-align:center;margin-top:8px;font-size:11px;color:#666}
+.chart-wrap{background:#1a1a3e;border-radius:8px;padding:10px;overflow-x:auto}
+.legend{text-align:center;margin:6px 0 10px;font-size:12px}
+.legend span{display:inline-block;margin:0 8px;padding:2px 8px;border-radius:3px}
+.info{text-align:center;margin:8px 0;font-size:11px;color:#666;line-height:1.6}
+@media(min-width:768px){
+  body{padding:20px 40px}
+  h1{font-size:28px}
+  .stats{grid-template-columns:1fr 1fr 1fr 1fr;max-width:none}
+  .stat .v{font-size:28px}
+}
 </style>
 </head>
 <body>
 <h1>""" + title + """</h1>
-<div class="stats">
-<div class="stat"><div class="v">""" + str(latest["index_value"]) + """</div><div class="l">最新点位</div></div>
-<div class="stat"><div class="v">""" + str(latest["cumulative_return"]) + """%</div><div class="l">累计涨幅</div></div>
-<div class="stat"><div class="v">""" + str(len(df)) + """</div><div class="l">交易日</div></div>
-<div class="stat"><div class="v">""" + df["date"].iloc[0] + """</div><div class="l">起始日期</div></div>
+<div class="stats">""" + stat_html + """</div>
+<div class="legend">
+<span style="border-left:3px solid #fff">EMA5</span>
+<span style="border-left:3px solid #0f0">MA50</span>
+<span style="border-left:3px solid #f44">MA100</span>
+<span style="background:#ff4444;color:#fff">阳线</span>
+<span style="background:#00c853;color:#fff">阴线</span>
 </div>
-<div id="chart-wrap"><div id="chart"><canvas id="cv"></canvas></div></div>
-<div class="info">成分股：中际旭创、新易盛、天孚通信、海光信息、寒武纪、龙芯中科、工业富联、浪潮信息、中科曙光、香农芯创、佰维存储、德明利、江波龙、兆易创新 | 等权重 | """ + datetime.now().strftime("%Y-%m-%d %H:%M") + """</div>
-<script>
-var DATA=""" + dj + """;
-var d=DATA.dates.map(function(x,i){return{x:x,o:DATA.o[i],h:DATA.h[i],l:DATA.l[i],c:DATA.c[i]}});
-var ctx=document.getElementById("cv").getContext("2d");
-var chart=new Chart(ctx,{
-type:"candlestick",
-data:{
-  datasets:[
-    {label:"K线",data:d,color:{up:"#ff4444",down:"#00c853",unchanged:"#888"},borderColor:{up:"#ff4444",down:"#00c853",unchanged:"#888"},bar:{_data:null}},
-  ]
-},
-options:{
-  responsive:true,maintainAspectRatio:false,
-  parsing:{xAxisKey:"x",yAxisKey:"c"},
-  scales:{
-    x:{type:"time",time:{parser:"yyyy-MM-dd",tooltipFormat:"yyyy-MM-dd",unit:"month"},ticks:{color:"#888"},grid:{color:"#222"},adapters:{date:{}}},
-    y:{beginAtZero:false,ticks:{color:"#888"},grid:{color:"#222"}}
-  },
-  plugins:{
-    legend:{labels:{color:"#ddd"}},
-    tooltip:{enabled:true,mode:"index",intersect:false}
-  }
-}
-});
-// 等 chartjs-chart-financial 注册后加均线
-setTimeout(function(){
-  var cData=chart.data;
-  cData.datasets.push({label:"EMA5",data:DATA.dates.map(function(x,i){return{x:x,y:DATA.ma5[i]}}),type:"line",borderColor:"#fff",pointRadius:0,borderWidth:1.5,fill:false});
-  cData.datasets.push({label:"MA50",data:DATA.dates.map(function(x,i){return{x:x,y:DATA.ma50[i]}}),type:"line",borderColor:"#00ff00",pointRadius:0,borderWidth:1.5,fill:false});
-  cData.datasets.push({label:"MA100",data:DATA.dates.map(function(x,i){return{x:x,y:DATA.ma100[i]}}),type:"line",borderColor:"#ff4444",pointRadius:0,borderWidth:2,fill:false});
-  chart.update();
-},500);
-</script>
+<div class="chart-wrap">""" + svg + """</div>
+<div class="info">成分股（等权重）：""" + stock_names + """ | 更新：""" + datetime.now().strftime("%Y-%m-%d %H:%M") + """</div>
 </body>
 </html>"""
 

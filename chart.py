@@ -82,7 +82,7 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=35, scale=1, offset=0, isInit=true;
+var pd=35, pd_b=45, scale=1, offset=0, isInit=true;
 var INITIAL_VIS = 60; // 初始显示最近60根K线
 
 function resize(){{
@@ -109,8 +109,8 @@ function draw(){{
   ctx.clearRect(0,0,W,H);
   if(n<2) return;
 
-  var pw = W - 2*pd;
-  var ph = H - 2*pd;
+  var pw = W - pd - pd;
+  var ph = H - pd - pd_b;
   var visN = Math.max(10, Math.floor(n / scale));
   var i0 = Math.floor(offset);
   if(i0 < 0) i0 = 0;
@@ -136,7 +136,7 @@ function draw(){{
     ctx.fillStyle = "#666";
     ctx.font = "8px Arial";
     ctx.textAlign = "end";
-    ctx.fillText(Math.round(mn + (1-g/4)*rg), pd-3, yy+3);
+    ctx.fillText(Math.round(mn + (1-g/4)*rg), pd-2, yy+3);
   }}
 
   function poly(arr, color, w, dash){{
@@ -225,15 +225,27 @@ function draw(){{
     }}
   }}
 
-  // 时间轴
-  ctx.fillStyle = "#888";
-  ctx.font = "8px Arial";
+  // 时间轴 — 两行：上 MMDD，下年（只在首尾和新年份）
+  ctx.fillStyle = "#999";
   ctx.textAlign = "center";
   var visDays = i1 - i0;
-  var labelW = 45;
+  var labelW = 40;
   var labelStep = Math.max(1, Math.floor(labelW * visDays / pw));
+  var lastYearShown = "";
   for(var i=i0;i<i1;i+=labelStep){{
-    ctx.fillText(D.ds[i], xp(i), pd+ph+14);
+    var dateStr = D.ds[i];
+    var parts = dateStr.split("-");
+    var mmdd = parts[1] + parts[2];
+    var yyyy = parts[0];
+    var xx = xp(i);
+    // 上排：MMDD
+    ctx.font = "8px Arial";
+    ctx.fillText(mmdd, xx, pd+ph+12);
+    // 下排：年份（只在变化时显示）
+    if(yyyy !== lastYearShown){{
+      ctx.fillText(yyyy, xx, pd+ph+24);
+      lastYearShown = yyyy;
+    }}
   }}
 
   ctx.strokeStyle = "#555";

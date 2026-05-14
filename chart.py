@@ -82,7 +82,7 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=35, pd_b=45, scale=1, offset=0, isInit=true;
+var pd=25, pd_b=42, scale=1, offset=0, isInit=true;
 var INITIAL_VIS = 60; // 初始显示最近60根K线
 
 function resize(){{

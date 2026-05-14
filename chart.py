@@ -54,6 +54,14 @@ def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None):
     last_change_pct = round((cl[-1] - op[-1]) / op[-1] * 100, 2)
     is_up = cl[-1] >= op[-1]
 
+    # 周线最新信息
+    w_ld = ""
+    w_lc = ""
+    if wdf is not None and len(wdf) > 0:
+        wlt = wdf.iloc[-1]
+        w_ld = wlt["date"]
+        w_lc = round(wlt["close"], 1)
+
     html = f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -116,14 +124,14 @@ function getData(){{ return isWeek ? D_WEEK : D_DAY; }}
 function switchPeriod(week){{
   isWeek = week;
   D = getData();
-  // 切换后reset视角
   document.getElementById("pbtn_day").className = week ? "pbtn" : "pbtn act";
   document.getElementById("pbtn_week").className = week ? "pbtn act" : "pbtn";
+  document.getElementById("dayInfo").style.display = week ? "none" : "";
+  document.getElementById("weekInfo").style.display = week ? "" : "none";
   var n = D.ds.length;
   scale = n / 60;
   offset = n - 60;
-  isInit = true; // 触发一次初始缩放
-  resize();
+  draw();
 }}
 // 挂到全局以便 onclick 调用
 window.switchPeriod = switchPeriod;
@@ -472,7 +480,8 @@ resize();
 
 }})();
 </script>
-<div class="info">📅 {last_date} <b>{last_close}</b> {'🔴涨' if is_up else '🟢跌'} {last_change:+.1f}({last_change_pct:+.2f}%) | 指数 {lv}({cr}%) | {sn}</div>
+<div class="info" id="dayInfo">📅 {last_date} <b>{last_close}</b> {'🔴涨' if is_up else '🟢跌'} {last_change:+.1f}({last_change_pct:+.2f}%) | 指数 {lv}({cr}%) | {sn}</div>
+<div class="info" id="weekInfo" style="display:none">📅 {w_ld} <b>{w_lc}</b>（周线）| {sn}</div>
 </body>
 </html>'''
     return html

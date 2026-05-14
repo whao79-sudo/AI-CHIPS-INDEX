@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Canvas K线图渲染 - 支持缩放平移"""
 from datetime import datetime
+import json
 
 
 def gen_kline_html(df, ind, title, stocks_list):
@@ -14,8 +15,6 @@ def gen_kline_html(df, ind, title, stocks_list):
 
     sn = "、".join([s["name"] for s in stocks_list])
 
-    # 要画的指标数据转 json
-    import json
     data = {
         "ds": ds, "op": op, "hi": hi, "lo": lo, "cl": cl,
         "sa_": ind["sa_"], "sb_": ind["sb_"],
@@ -27,8 +26,6 @@ def gen_kline_html(df, ind, title, stocks_list):
         "ma100": ind["ma100"], "ub2": ind["ub2"], "lb2": ind["lb2"],
     }
     data_json = json.dumps(data)
-    ltv = json.dumps({"index_value": float(lt["index_value"]),
-                      "cumulative_return": float(lt["cumulative_return"])})
     lv = int(lt["index_value"])
     cr = round(lt["cumulative_return"], 2)
 
@@ -46,7 +43,7 @@ h1{{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}}
 .stat{{background:#0d0d28;padding:12px;border-radius:8px;text-align:center}}
 .stat .v{{font-size:22px;color:#00d4ff;font-weight:bold}}
 .stat .l{{font-size:11px;color:#888;margin-top:3px}}
-.cwrap{{background:#0d0d28;border-radius:8px;padding:5px;width:100%}}
+.cwrap{{background:#0d0d28;border-radius:8px;padding:5px;width:100%;height:auto}}
 canvas{{display:block;width:100%;height:auto;touch-action:none}}
 .leg{{text-align:center;margin:6px 0;font-size:10px;line-height:1.6}}
 .leg span{{display:inline-block;padding:0 4px;margin:0 2px;border-radius:2px}}
@@ -90,14 +87,16 @@ var n = D.ds.length;
 var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
-var W, H, pd=65;
-var scale = 1, offset = 0;
-var lastDist = 0, lastCX = 0;
+var W, H;
+var pd=60, scale=1, offset=0;
 
 function resize(){{
   var r = c.parentElement.getBoundingClientRect();
-  H = Math.min(500, window.innerHeight * 0.6);
   W = r.width;
+  // 竖屏取75%高度，横屏取85%
+  H = window.innerWidth > window.innerHeight
+    ? window.innerHeight * 0.85
+    : window.innerHeight * 0.75;
   c.width = W * devicePixelRatio;
   c.height = H * devicePixelRatio;
   c.style.width = W + "px";
@@ -105,8 +104,6 @@ function resize(){{
   ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   draw();
 }}
-
-function lerp(a,b,t){{return a+(b-a)*t}}
 
 function clamp(v,lo,hi){{return v<lo?lo:v>hi?hi:v}}
 
@@ -116,20 +113,16 @@ function draw(){{
 
   var pw = W - 2*pd;
   var ph = H - 2*pd;
-
-  // 可见范围
   var visN = Math.max(10, Math.floor(n / scale));
   var i0 = Math.floor(clamp(offset, 0, n - visN));
   var i1 = Math.min(i0 + visN, n);
 
   // 价格范围
-  var mv = 1e9, xv = -1e9;
-  var useHi = [], useLo = [];
+  var mn = 1e9, mx = -1e9;
   for(var i=i0;i<i1;i++){{
-    useHi.push(D.hi[i]); useLo.push(D.lo[i]);
+    if(D.lo[i] < mn) mn = D.lo[i];
+    if(D.hi[i] > mx) mx = D.hi[i];
   }}
-  var mn = Math.min.apply(null, useLo);
-  var mx = Math.max.apply(null, useHi);
   var rg = mx - mn || 1;
 
   function yp(v){{ return pd + ph - (v-mn)/rg*ph }}
@@ -144,7 +137,7 @@ function draw(){{
     ctx.fillStyle = "#666";
     ctx.font = "10px Arial";
     ctx.textAlign = "end";
-    ctx.fillText(Math.round(mn + (1-g/4)*rg), pd-4, yy+4);
+    ctx.fillText(Math.round(mn + (1-g/4)*rg), pd-5, yy+4);
   }}
 
   function poly(arr, color, w, dash){{
@@ -163,7 +156,7 @@ function draw(){{
     ctx.setLineDash([]);
   }}
 
-  function fillCloud(d1, d2, color, i0, i1){{
+  function fillCloud(d1, d2, color){{
     ctx.fillStyle = color;
     ctx.beginPath();
     var started = false;
@@ -187,15 +180,15 @@ function draw(){{
     while(j<i1 && D.sa_[j]!=null && D.sb_[j]!=null) j++;
     if(j>i){{
       var bullish = D.sa_[i] >= D.sb_[i];
-      fillCloud(D.sa_, D.sb_, bullish ? "rgba(255,107,53,0.2)" : "rgba(42,111,156,0.2)", i, j);
+      fillCloud(D.sa_, D.sb_, bullish
+        ? "rgba(255,107,53,0.22)"
+        : "rgba(42,111,156,0.22)", i, j);
     }}
     i=j;
   }}
 
   poly(D.sa_, "#ff6b35", 1.5);
   poly(D.sb_, "#2a6f9c", 1.5);
-
-  // 指标
   poly(D.ub, "#aa843e", 0.5, true);
   poly(D.lb, "#aa843e", 0.5, true);
   poly(D.boll, "#aa843e", 1);
@@ -211,17 +204,16 @@ function draw(){{
   poly(D.ma100, "#f44", 2);
 
   // K线
+  var cw2 = Math.max(1, Math.min(10, pw/(i1-i0)-2));
+  var hw2 = cw2/2;
   for(var i=i0;i<i1;i++){{
     var x = xp(i);
-    var y_op = yp(D.op[i]), y_cl = yp(D.cl[i]), y_hi = yp(D.hi[i]), y_lo = yp(D.lo[i]);
     var col = D.op[i] < D.cl[i] ? "#ff4444" : "#00c853";
-    var cw2 = Math.max(1, Math.min(8, pw/(i1-i0)-1));
-    var hw2 = Math.max(0.5, cw2/2);
     ctx.strokeStyle = col;
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x,y_hi); ctx.lineTo(x,y_lo); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x,yp(D.hi[i])); ctx.lineTo(x,yp(D.lo[i])); ctx.stroke();
     ctx.fillStyle = col;
-    ctx.fillRect(x-hw2, Math.min(y_op,y_cl), cw2, Math.abs(y_cl-y_op)+1);
+    ctx.fillRect(x-hw2, Math.min(yp(D.op[i]),yp(D.cl[i])), cw2, Math.abs(yp(D.cl[i])-yp(D.op[i]))+1);
   }}
 
   // 信号
@@ -239,23 +231,26 @@ function draw(){{
     }}
   }}
 
-  // 时间轴
-  ctx.fillStyle = "#666";
-  ctx.font = "9px Arial";
+  // 时间轴 - 动态间隔防重叠
+  ctx.fillStyle = "#888";
+  ctx.font = "10px Arial";
   ctx.textAlign = "center";
-  var step = Math.max(1, Math.floor((i1-i0)/6));
-  for(var i=i0;i<i1;i+=step){{
-    ctx.fillText(D.ds[i], xp(i), pd+ph+16);
+  var visDays = i1 - i0;
+  // 屏幕宽度上一行日期大概占35px，算间隔
+  var labelW = 60;
+  var labelStep = Math.max(1, Math.floor(labelW * visDays / pw));
+  for(var i=i0;i<i1;i+=labelStep){{
+    ctx.fillText(D.ds[i], xp(i), pd+ph+15);
   }}
 
   // 边框
-  ctx.strokeStyle = "#444";
+  ctx.strokeStyle = "#555";
   ctx.lineWidth = 1;
   ctx.setLineDash([]);
   ctx.strokeRect(pd, pd, pw, ph);
 }}
 
-// 触摸/鼠标事件
+// 触摸
 var isDragging = false;
 var dragStartX = 0, dragStartOff = 0;
 
@@ -283,7 +278,7 @@ c.addEventListener("touchmove", function(e){{
     draw();
   }} else if(t.length==2){{
     var dist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
-    var s = dist / lastDist;
+    var s = dist / (lastDist||1);
     var cx = (t[0].clientX+t[1].clientX)/2;
     var cxRatio = cx / W;
     var oldScale = scale;
@@ -299,7 +294,7 @@ c.addEventListener("touchmove", function(e){{
 
 c.addEventListener("touchend", function(e){{ isDragging=false; }});
 
-// 鼠标滚轮缩放
+// 鼠标滚轮
 c.addEventListener("wheel", function(e){{
   e.preventDefault();
   var r = c.getBoundingClientRect();
@@ -313,7 +308,7 @@ c.addEventListener("wheel", function(e){{
   draw();
 }}, {{passive:false}});
 
-// 鼠标拖拽平移
+// 鼠标拖拽
 c.addEventListener("mousedown", function(e){{
   isDragging = true;
   dragStartX = e.clientX;

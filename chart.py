@@ -57,7 +57,7 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 <span style="border-left:3px solid #2a6f9c;color:#2a6f9c">先行B</span>
 <span style="border-left:3px solid #aa843e;color:#aa843e">BOL20</span>
 <span style="border-left:3px solid #ffd700;color:#ffd700">MA300</span>
-<span style="border-left:3px solid #4682b4;color:#4682b4">±1SD300</span>
+<span style="border-left:3px solid #ffd700;color:#ffd700">±2SD300</span>
 <span style="border-left:3px solid #fff;color:#fff">EMA5</span>
 <span style="border-left:3px solid #0f0">MA50</span>
 <span style="border-left:3px solid #f44;color:#f44">MA100</span>
@@ -176,8 +176,7 @@ function draw(){{
   poly(D.ma300, "#ffd700", 2);
   poly(D.ub1, "#ffd700", 0.5, true);
   poly(D.lb1, "#ffd700", 0.5, true);
-  poly(D.ub1a, "#4682b4", 1, true);
-  poly(D.lb1a, "#4682b4", 1, true);
+  // ±1SD300 已移除，保留 ±2SD
   poly(D.ub2, "#888", 0.5, true);
   poly(D.lb2, "#888", 0.5, true);
   poly(D.ema5, "#fff", 1.5);

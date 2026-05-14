@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 
 
-def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None):
+def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None, d2df=None, d2_ind=None):
     ds = df["date"].tolist()
     op = df["open"].tolist()
     hi = df["high"].tolist()
@@ -44,8 +44,27 @@ def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None):
             "dif": w_ind["dif"], "dea": w_ind["dea"], "macd": w_ind["macd"],
         }
 
+    # 两日线数据
+    d2_data = None
+    if d2df is not None and d2_ind is not None:
+        d2_data = {
+            "ds": d2df["date"].tolist(),
+            "op": d2df["open"].tolist(),
+            "hi": d2df["high"].tolist(),
+            "lo": d2df["low"].tolist(),
+            "cl": d2df["close"].tolist(),
+            "sa_": d2_ind["sa_"], "sb_": d2_ind["sb_"],
+            "tenkan": d2_ind["tenkan"], "kijun": d2_ind["kijun"],
+            "boll": d2_ind["boll"], "ub": d2_ind["ub"], "lb": d2_ind["lb"],
+            "ma300": d2_ind["ma300"], "ub1": d2_ind["ub1"], "lb1": d2_ind["lb1"],
+            "ema5": d2_ind["ema5"], "ma50": d2_ind["ma50"],
+            "ma100": d2_ind["ma100"], "ub2": d2_ind["ub2"], "lb2": d2_ind["lb2"],
+            "dif": d2_ind["dif"], "dea": d2_ind["dea"], "macd": d2_ind["macd"],
+        }
+
     data_json = json.dumps(data)
     w_data_json = json.dumps(w_data) if w_data else "null"
+    d2_data_json = json.dumps(d2_data) if d2_data else "null"
     lv = int(lt["index_value"])
     cr = round(lt["cumulative_return"], 2)
     last_date = ds[-1]
@@ -61,6 +80,14 @@ def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None):
         wlt = wdf.iloc[-1]
         w_ld = wlt["date"]
         w_lc = round(wlt["close"], 1)
+
+    # 两日线最新信息
+    d2_ld = ""
+    d2_lc = ""
+    if d2df is not None and len(d2df) > 0:
+        d2lt = d2df.iloc[-1]
+        d2_ld = d2lt["date"]
+        d2_lc = round(d2lt["close"], 1)
 
     html = f'''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -90,8 +117,9 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 <body>
 <h1>{title}</h1>
 <div class="pb">
-<span class="pbtn act" id="pbtn_day" onclick="switchPeriod(false)">日线</span>
-<span class="pbtn" id="pbtn_week" onclick="switchPeriod(true)">周线</span>
+<span class="pbtn act" id="pbtn_day" onclick="switchPeriod(0)">日线</span>
+<span class="pbtn" id="pbtn_2day" onclick="switchPeriod(1)">两日</span>
+<span class="pbtn" id="pbtn_week" onclick="switchPeriod(2)">周线</span>
 </div>
 <div class="leg">
 <span style="border-left:3px solid #ff6b35;color:#ff6b35">先行A</span>
@@ -115,19 +143,25 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 <script>
 (function(){{
 var D_DAY = {data_json};
+var D_2DAY = {d2_data_json};
 var D_WEEK = {w_data_json};
-var isWeek = false;
+var allData = [D_DAY, D_2DAY, D_WEEK];
+var periodNames = ["day", "2day", "week"];
+var periodLabels = ["dayInfo", "d2Info", "weekInfo"];
+var periodBtns = ["pbtn_day", "pbtn_2day", "pbtn_week"];
+var curPeriod = 0;
 var D;
 
-function getData(){{ return isWeek ? D_WEEK : D_DAY; }}
+function getData(){{ return D; }}
 
-function switchPeriod(week){{
-  isWeek = week;
-  D = getData();
-  document.getElementById("pbtn_day").className = week ? "pbtn" : "pbtn act";
-  document.getElementById("pbtn_week").className = week ? "pbtn act" : "pbtn";
-  document.getElementById("dayInfo").style.display = week ? "none" : "";
-  document.getElementById("weekInfo").style.display = week ? "" : "none";
+function switchPeriod(idx){{
+  if(!allData[idx]) return; // data not available (null)
+  curPeriod = idx;
+  D = allData[idx];
+  for(var i=0;i<3;i++){{
+    document.getElementById(periodBtns[i]).className = i==idx ? "pbtn act" : "pbtn";
+    document.getElementById(periodLabels[i]).style.display = i==idx ? "" : "none";
+  }}
   n = D.ds.length;
   scale = n / 60;
   offset = n - 60;
@@ -481,6 +515,7 @@ resize();
 }})();
 </script>
 <div class="info" id="dayInfo">📅 {last_date} <b>{last_close}</b> {'🔴涨' if is_up else '🟢跌'} {last_change:+.1f}({last_change_pct:+.2f}%) | 指数 {lv}({cr}%) | {sn}</div>
+<div class="info" id="d2Info" style="display:none">📅 {d2_ld} <b>{d2_lc}</b>（两日）| {sn}</div>
 <div class="info" id="weekInfo" style="display:none">📅 {w_ld} <b>{w_lc}</b>（周线）| {sn}</div>
 </body>
 </html>'''

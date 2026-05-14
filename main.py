@@ -7,18 +7,16 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+import importlib
 
 from indicators import calc_indicators
 from chart import gen_kline_html
 
 HIST_CSV = "stocks_history.csv"
 
-HAS_BAOSTOCK = False
-try:
+HAS_BAOSTOCK = importlib.util.find_spec("baostock") is not None
+if HAS_BAOSTOCK:
 import baostock as bs
-HAS_BAOSTOCK = True
-except:
-pass
 
 
 def fetch_baostock(code, start_date, end_date):

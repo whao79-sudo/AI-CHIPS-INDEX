@@ -5,23 +5,18 @@ import requests
 import yaml
 import os
 import sys
-from datetime import datetime, timedelta
-from pathlib import Path
 import importlib
 import baostock as bs
-
+from datetime import datetime, timedelta
+from pathlib import Path
 from indicators import calc_indicators
 from chart import gen_kline_html
 
 HIST_CSV = "stocks_history.csv"
 HAS_BAOSTOCK = True
-if HAS_BAOSTOCK:
-import baostock as bs
 
 
 def fetch_baostock(code, start_date, end_date):
-if not HAS_BAOSTOCK:
-return None
 bs_code = "{}.{}".format(code[:2], code[2:])
 try:
 bs.login()
@@ -130,13 +125,15 @@ if len(sub) > 0:
 last_date = pd.to_datetime(sub["date"]).max()
 if last_date is not None:
 fetch_start = last_date + timedelta(days=1)
-print(" [{}/{}] {} {} incr from {}...".format(i, len(self.stocks), name, code, last_date.strftime("%Y-%m-%d")))
+print(" [{}/{}] {} {} incr from {}...".format(
+i, len(self.stocks), name, code, last_date.strftime("%Y-%m-%d")))
 df = fetch_baostock(code, fetch_start, end_date)
 if df is None or len(df) == 0:
 print(" -> fallback Sina")
 df = fetch_sina(code, datalen=15)
 else:
-print(" [{}/{}] {} {} full...".format(i, len(self.stocks), name, code))
+print(" [{}/{}] {} {} full...".format(
+i, len(self.stocks), name, code))
 df = fetch_baostock(code, start_date, end_date)
 if df is None or len(df) == 0:
 print(" -> fallback Sina")
@@ -150,7 +147,8 @@ return None
 new = pd.concat(rows, ignore_index=True)
 if old is not None:
 all_ = pd.concat([old, new], ignore_index=True)
-all_ = all_.sort_values("date").drop_duplicates(subset=["code", "date"], keep="last")
+all_ = all_.sort_values("date").drop_duplicates(
+subset=["code", "date"], keep="last")
 else:
 all_ = new
 all_ = all_[all_["date"] >= start_str]
@@ -162,7 +160,10 @@ def calc_index(self, sdf):
 d = sdf.copy()
 d["date"] = pd.to_datetime(d["date"])
 d = d.sort_values(["code", "date"])
-g = d.groupby(d["date"].dt.strftime("%Y-%m-%d")).agg({"open": "mean", "high": "mean", "low": "mean", "close": "mean"}).reset_index().rename(columns={"date": "ds"})
+g = d.groupby(d["date"].dt.strftime("%Y-%m-%d")).agg(
+{"open": "mean", "high": "mean",
+"low": "mean", "close": "mean"}
+).reset_index().rename(columns={"date": "ds"})
 if len(g) == 0:
 return None
 bv = self.index_config["base_value"]
@@ -184,10 +185,18 @@ return gen_kline_html(df, ind, title, self.stocks)
 
 def save(self, sdf, idf):
 self.output_dir.mkdir(parents=True, exist_ok=True)
-sdf.to_csv(self.output_dir / "AI_CHIP_INDEX_stocks.csv", index=False, encoding="utf-8-sig")
-idf.to_csv(self.output_dir / "AI_CHIP_INDEX_detail.csv", index=False, encoding="utf-8-sig")
-idf[["date", "index_value"]].to_csv(self.output_dir / "AI_CHIP_INDEX.csv", index=False, encoding="utf-8-sig")
-with open(self.output_dir / "AI_CHIP_INDEX_kline.html", "w", encoding="utf-8") as f:
+sdf.to_csv(
+self.output_dir / "AI_CHIP_INDEX_stocks.csv",
+index=False, encoding="utf-8-sig")
+idf.to_csv(
+self.output_dir / "AI_CHIP_INDEX_detail.csv",
+index=False, encoding="utf-8-sig")
+idf[["date", "index_value"]].to_csv(
+self.output_dir / "AI_CHIP_INDEX.csv",
+index=False, encoding="utf-8-sig")
+with open(
+self.output_dir / "AI_CHIP_INDEX_kline.html",
+"w", encoding="utf-8") as f:
 f.write(self.gen_html(idf))
 print("Saved OK")
 
@@ -201,13 +210,16 @@ if i is None:
 print("Calc failed")
 return
 self.save(s, i)
-print("Done! Latest: {:.2f}, Return: {:.2f}%".format(i["index_value"].iloc[-1], i["cumulative_return"].iloc[-1]))
+print("Done! Latest: {:.2f}, Return: {:.2f}%".format(
+i["index_value"].iloc[-1], i["cumulative_return"].iloc[-1]))
 
 
 if __name__ == "__main__":
 g = IndexGenerator()
 if len(sys.argv) > 1 and sys.argv[1] == "chart":
-s = pd.read_csv(g.output_dir / "AI_CHIP_INDEX_stocks.csv", encoding="utf-8-sig")
+s = pd.read_csv(
+g.output_dir / "AI_CHIP_INDEX_stocks.csv",
+encoding="utf-8-sig")
 g.save(s, g.calc_index(s))
 else:
 g.run()

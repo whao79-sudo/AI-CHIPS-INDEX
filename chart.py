@@ -82,7 +82,7 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=45, scale=1, offset=0, isInit=true;
+var pd=35, scale=1, offset=0, isInit=true;
 var INITIAL_VIS = 60; // 初始显示最近60根K线
 
 function resize(){{
@@ -134,9 +134,9 @@ function draw(){{
     var yy = pd + g*ph/4;
     ctx.beginPath(); ctx.moveTo(pd,yy); ctx.lineTo(pd+pw,yy); ctx.stroke();
     ctx.fillStyle = "#666";
-    ctx.font = "10px Arial";
+    ctx.font = "8px Arial";
     ctx.textAlign = "end";
-    ctx.fillText(Math.round(mn + (1-g/4)*rg), pd-5, yy+4);
+    ctx.fillText(Math.round(mn + (1-g/4)*rg), pd-3, yy+3);
   }}
 
   function poly(arr, color, w, dash){{
@@ -227,10 +227,10 @@ function draw(){{
 
   // 时间轴
   ctx.fillStyle = "#888";
-  ctx.font = "10px Arial";
+  ctx.font = "8px Arial";
   ctx.textAlign = "center";
   var visDays = i1 - i0;
-  var labelW = 55;
+  var labelW = 45;
   var labelStep = Math.max(1, Math.floor(labelW * visDays / pw));
   for(var i=i0;i<i1;i+=labelStep){{
     ctx.fillText(D.ds[i], xp(i), pd+ph+14);

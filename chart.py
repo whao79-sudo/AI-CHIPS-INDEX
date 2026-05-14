@@ -128,7 +128,7 @@ function switchPeriod(week){{
   document.getElementById("pbtn_week").className = week ? "pbtn act" : "pbtn";
   document.getElementById("dayInfo").style.display = week ? "none" : "";
   document.getElementById("weekInfo").style.display = week ? "" : "none";
-  var n = D.ds.length;
+  n = D.ds.length;
   scale = n / 60;
   offset = n - 60;
   draw();
@@ -140,13 +140,13 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=25, pd_b=8, scale=1, offset=0, isInit=true;
+var pd=25, pd_b=8, scale=1, offset=0, isInit=true, n=0;
 var MAIN_RATIO = 0.7; // 主图占70%，MACD占30%
 var INITIAL_VIS = 60;
 
 function resize(){{
   D = getData();
-  var n = D.ds.length;
+  n = D.ds.length;
   var r = c.parentElement.getBoundingClientRect();
   W = r.width;
   H = Math.max(350, Math.min(W * 0.7, window.innerHeight * 0.85));
@@ -167,7 +167,7 @@ function clamp(v,lo,hi){{return v<lo?lo:v>hi?hi:v}}
 
 function draw(){{
   D = getData();
-  var n = D.ds.length;
+  n = D.ds.length;
   ctx.clearRect(0,0,W,H);
   if(n<2) return;
 

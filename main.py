@@ -178,31 +178,23 @@ class IndexGenerator:
         return g.rename(columns={"ds": "date"})
 
     def calc_weekly_index(self, sdf):
-        """按周计算 OHLC：周开=周一开盘，周高=周最高，周低=周最低，周收=周五收盘"""
-        d = sdf.copy()
-        d["date"] = pd.to_datetime(d["date"])
-        d = d.sort_values(["code", "date"])
-        # 周分组：按 ISO 周（周一开始）
-        d["week"] = d["date"].dt.isocalendar().year.astype(str) + "-W" + d["date"].dt.isocalendar().week.astype(str).str.zfill(2)
-        g = d.groupby("week").agg(
+        """按周计算 OHLC：用日线指数结果按周聚合（先指数后周级）"""
+        # 先算日线指数
+        df = self.calc_index(sdf)
+        if df is None or len(df) < 2:
+            return None
+        df["date"] = pd.to_datetime(df["date"])
+        df["week"] = df["date"].dt.isocalendar().year.astype(str) + "-W" + \
+                     df["date"].dt.isocalendar().week.astype(str).str.zfill(2)
+        g = df.groupby("week", sort=True).agg(
             {"open": "first", "high": "max",
              "low": "min", "close": "last"}
         ).reset_index()
-        if len(g) == 0:
-            return None
-        bv = self.index_config["base_value"]
-        first_close = g["close"].iloc[0]
-        # 需要日期映射：取每周第一个交易日日期
-        week_dates = d.groupby("week")["date"].first().reset_index(name="_dt")
+        # 取每周第一个交易日日期
+        week_dates = df.groupby("week")["date"].first().reset_index(name="_dt")
         g = g.merge(week_dates, on="week", how="left")
         g["date"] = g["_dt"].dt.strftime("%Y-%m-%d")
-        g["index_value"] = (g["close"] / first_close * bv).round(2)
-        g["cumulative_return"] = ((g["index_value"] / bv - 1) * 100).round(2)
-        g.loc[0, "cumulative_return"] = 0.0
-        scale = bv / first_close
-        for c in ["open", "high", "low", "close"]:
-            g[c] = (g[c] * scale).round(2)
-        return g[["date", "open", "high", "low", "close", "index_value", "cumulative_return"]]
+        return g[["date", "open", "high", "low", "close"]]
 
     def gen_html(self, df, wdf, title="AI CHIP INDEX"):
         cl = df["close"].tolist()

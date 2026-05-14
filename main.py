@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Chip Index - 首次全量，后续增量更新
+AI Chip Index - Baostock 优先 + 新浪 fallback
 """
 import pandas as pd, numpy as np, requests, yaml, os, sys, json
 from datetime import datetime, timedelta
@@ -17,7 +17,7 @@ except:
 
 
 def fetch_baostock(code, start_date, end_date):
-    """Baostock 获取个股数据"""
+    """Baostock 前复权"""
     if not HAS_BAOSTOCK: return
     bs_code = "{}.{}".format(code[:2], code[2:])
     try:
@@ -38,12 +38,50 @@ def fetch_baostock(code, start_date, end_date):
         df = pd.DataFrame(data, columns=["date","open","high","low","close","volume"])
         for c in ["open","high","low","close","volume"]: df[c] = pd.to_numeric(df[c], errors="coerce")
         df["code"] = code
-        print("    Baostock: {} rows ({} to {})".format(len(df), start_date.strftime("%m-%d"), end_date.strftime("%m-%d")))
+        print("    Baostock: {} rows".format(len(df)))
         return df[["date","code","open","high","low","close","volume"]]
     except Exception as e:
         print("    Baostock fail: {}".format(e))
         try: bs.logout()
         except: pass
+
+
+def fetch_sina(code, datalen=1000):
+    """新浪不复权"""
+    url = "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale=240&ma=no&datalen={}".format(code, datalen)
+    try:
+        r = requests.get(url, timeout=15, headers={"User-Agent":"Mozilla/5.0"})
+        r.raise_for_status(); data = r.json()
+        if not data: return
+        df = pd.DataFrame(data).rename(columns={"day":"date"})
+        for c in ["open","high","low","close","volume"]: df[c] = pd.to_numeric(df[c], errors="coerce")
+        df["code"] = code
+        print("    Sina: {} rows".format(len(df)))
+        return df[["date","code","open","high","low","close","volume"]]
+    except Exception as e:
+        print("    Sina fail: {}".format(e))
+
+
+def smart_adjust(df):
+    """智能前复权：gap < -25% 判定除权"""
+    df = df.sort_values("date").copy()
+    adjusted = []
+    for code in df["code"].unique():
+        sub = df[df["code"] == code].sort_values("date").copy()
+        sub.reset_index(drop=True, inplace=True)
+        adj = 1.0
+        for i in range(len(sub) - 1, 0, -1):
+            prev_c = sub.loc[i - 1, "close"]
+            curr_o = sub.loc[i, "open"]
+            if prev_c and curr_o:
+                gap = (curr_o - prev_c) / prev_c
+                if gap < -0.25:
+                    adj *= prev_c / curr_o
+            if adj != 1.0:
+                for c in ["open","high","low","close"]:
+                    sub.loc[i, c] = round(sub.loc[i, c] * adj, 2)
+        adjusted.append(sub)
+    return pd.concat(adjusted, ignore_index=True)
 
 
 class IndexGenerator:
@@ -74,51 +112,59 @@ class IndexGenerator:
         start = self.config["output"]["start_date"]
         start_date = datetime.strptime(start, "%Y-%m-%d")
         end_date = datetime.now()
-
-        # 看有没有历史数据
         old = None
         if os.path.exists(HIST_CSV):
             try:
                 old = pd.read_csv(HIST_CSV)
                 print("Loaded {} rows from history".format(len(old)))
             except: pass
-
         print("Fetching {} stocks...".format(len(self.stocks)))
         rows = []
         for i, s in enumerate(self.stocks, 1):
             code = s["code"]; name = s["name"]
-
-            # 如果有历史数据：从最后日期往后拉，只取最新几天
             last_date = None
             if old is not None:
                 sub = old[old["code"] == code]
                 if len(sub) > 0:
                     last_date = pd.to_datetime(sub["date"]).max()
-
+            using_baostock = True
             if last_date is not None:
-                # 拉最后日期的第二天到今天
                 fetch_start = last_date + timedelta(days=1)
                 print("  [{}/{}] {} {} incremental from {}...".format(i, len(self.stocks), name, code, last_date.strftime("%Y-%m-%d")))
                 df = fetch_baostock(code, fetch_start, end_date)
+                if df is None:
+                    print("  -> fallback to Sina")
+                    using_baostock = False
+                    df = fetch_sina(code, datalen=15)
             else:
-                # 没有历史：全量拉
                 print("  [{}/{}] {} {} full fetch...".format(i, len(self.stocks), name, code))
                 df = fetch_baostock(code, start_date, end_date)
-
+                if df is None:
+                    print("  -> fallback to Sina")
+                    using_baostock = False
+                    df = fetch_sina(code, datalen=1000)
             if df is not None and len(df) > 0:
-                df["name"] = name; rows.append(df)
-
+                df["name"] = name
+                df.attrs["using_baostock"] = using_baostock
+                rows.append(df)
         if not rows: print("No data!"); return
         new = pd.concat(rows, ignore_index=True)
-
-        # 合并新旧数据，去重
         if old is not None:
             all_ = pd.concat([old, new], ignore_index=True)
             all_ = all_.sort_values("date").drop_duplicates(subset=["code","date"], keep="last")
-        else:
-            all_ = new
-
+        else: all_ = new
         all_ = all_[all_["date"] >= start]
+        # 只有用了新浪的数据才需要手动复权
+        all_bs = all_[all_["code"].isin([s["code"] for s in self.stocks])]
+        # 检查是不是全用了 baostock
+        all_using_bs = all(hasattr(df, 'attrs') and df.attrs.get("using_baostock") for df in rows)
+        # 简化处理：只要有任何一只没用 Baostock，就走 smart_adjust
+        any_sina = any(not hasattr(df, 'attrs') or not df.attrs.get("using_baostock") for df in rows)
+        if any_sina:
+            print("Some stocks used Sina (unadjusted), applying smart_adjust...")
+            all_ = smart_adjust(all_)
+        else:
+            print("All from Baostock (前复权), no adjustment needed")
         all_.to_csv(HIST_CSV, index=False, encoding="utf-8-sig")
         print("Total: {} rows".format(len(all_)))
         return all_
@@ -211,7 +257,7 @@ h1{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}
 <span style="background:#ff4444;color:#fff">阳线</span><span style="background:#00c853;color:#fff">阴线</span>
 </div>
 <div class="cwrap">""" + svg + """</div>
-<div class="info">成分股（等权重）：""" + sn + """ | 数据源：Baostock 前复权 | """ + datetime.now().strftime("%Y-%m-%d %H:%M") + """</div>
+<div class="info">成分股（等权重）：""" + sn + """ | 数据源：Baostock 前复权（备选：新浪） | """ + datetime.now().strftime("%Y-%m-%d %H:%M") + """</div>
 </body>
 </html>"""
 

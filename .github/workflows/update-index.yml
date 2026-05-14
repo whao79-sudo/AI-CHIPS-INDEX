@@ -20,7 +20,7 @@ jobs:
       - run: pip install pandas numpy requests PyYAML
       - run: python main.py
       - run: cp output/AI_CHIP_INDEX_kline.html index.html
-      - uses: peaceiris/actions-gh-pages@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
+          path: ./
+      - uses: actions/deploy-pages@v4

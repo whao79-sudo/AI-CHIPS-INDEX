@@ -179,6 +179,12 @@ function draw(){{
     ctx.fill();
   }}
 
+  // 主图框 clip — 防止指标跑出绘图区
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pd, pd, pw, ph1);
+  ctx.clip();
+
   // 云层
   for(var i=i0;i<i1;i++){{
     var j=i;
@@ -228,7 +234,8 @@ function draw(){{
       {{ctx.fillStyle="#2a6f9c"; ctx.fillText("▼", xp(i), yp1(D.lo[i])+12);}}
   }}
 
-  // 主图边框
+  // 主图边框（在 clip 之后画）
+  ctx.restore();
   ctx.strokeStyle = "#333";
   ctx.lineWidth = 1;
   ctx.setLineDash([]);

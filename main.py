@@ -30,7 +30,7 @@ class IndexGenerator:
                 {"name":"江波龙","code":"sz301308"},{"name":"兆易创新","code":"sh603986"},
             ],
             "index":{"base_date":"2024-01-02","base_value":1000.0},
-            "output":{"dir":"./output","start_date":"2024-01-01","end_date":None},
+            "output":{"dir":"./output","start_date":"2025-01-01","end_date":None},
         }
 
     def fetch_stock_data(self, code, timeout=15):

@@ -13,7 +13,9 @@ def gen_kline_html(df, ind, title, stocks_list):
     lt = df.iloc[-1]
     n = len(ds)
 
-    W = 1400
+    # 动态宽度：每根K线至少占18px，最小1400px
+    bar_w = 18
+    W = max(1400, n * bar_w)
     H = 660
     pd_ = 80
     pw = W - 2 * pd_
@@ -25,7 +27,7 @@ def gen_kline_html(df, ind, title, stocks_list):
     def yp(v):
         return pd_ + ph - (v - mv) / rg * ph
 
-    cw = max(2, min(12, pw // n - 1))
+    cw = max(2, min(14, pw // n - 1))
     hw = max(1, cw // 2)
 
     def xp(i):
@@ -146,7 +148,7 @@ def gen_kline_html(df, ind, title, stocks_list):
             xt += '<text x="{}" y="{}" fill="#666" font-size="10" text-anchor="middle">{}</text>'.format(xp(i), pd_ + ph + 20, ds[i])
 
     box = '<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke="#444" stroke-width="1"/>'.format(pd_, pd_, pw, ph)
-    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" style="width:100%;height:auto;max-width:{}px">{}{}{}</svg>'.format(W, H, W, gs + box, sg, xt)
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" style="width:100%;height:auto;min-width:100%">{}{}{}</svg>'.format(W, H, gs + box, sg, xt)
 
     stats = ""
     for l, v in [
@@ -159,11 +161,27 @@ def gen_kline_html(df, ind, title, stocks_list):
 
     sn = "、".join([s["name"] for s in stocks_list])
 
+    # 动态宽度样式：允许横向滚动
+    wrap_style = '''
+.cwrap {
+    background:#0d0d28;
+    border-radius:8px;
+    padding:10px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+}
+.cwrap svg {
+    display:block;
+    min-width:100%;
+    height:auto;
+}
+'''
+
     html = '''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,minimum-scale=1.0">
 <title>''' + title + '''</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -173,8 +191,7 @@ h1{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}
 .stat{background:#0d0d28;padding:12px;border-radius:8px;text-align:center}
 .stat .v{font-size:22px;color:#00d4ff;font-weight:bold}
 .stat .l{font-size:11px;color:#888;margin-top:3px}
-.cwrap{background:#0d0d28;border-radius:8px;padding:10px;overflow-x:auto}
-.leg{text-align:center;margin:6px 0 10px;font-size:11px;line-height:1.7}
+''' + wrap_style + '''.leg{text-align:center;margin:6px 0 10px;font-size:11px;line-height:1.7}
 .leg span{display:inline-block;padding:0 6px;border-radius:2px;margin:0 3px}
 .info{text-align:center;margin:8px 0;font-size:11px;color:#555;line-height:1.6}
 @media(min-width:768px){

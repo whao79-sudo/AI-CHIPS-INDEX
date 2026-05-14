@@ -21,9 +21,9 @@ def gen_kline_html(df, ind, title, stocks_list):
         "tenkan": ind["tenkan"], "kijun": ind["kijun"],
         "boll": ind["boll"], "ub": ind["ub"], "lb": ind["lb"],
         "ma300": ind["ma300"], "ub1": ind["ub1"], "lb1": ind["lb1"],
-        "ub1a": ind["ub1a"], "lb1a": ind["lb1a"],
         "ema5": ind["ema5"], "ma50": ind["ma50"],
         "ma100": ind["ma100"], "ub2": ind["ub2"], "lb2": ind["lb2"],
+        "dif": ind["dif"], "dea": ind["dea"], "macd": ind["macd"],
     }
     data_json = json.dumps(data)
     lv = int(lt["index_value"])
@@ -69,6 +69,10 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 <span style="border-left:3px solid #f44;color:#f44">MA100</span>
 <span style="color:#ff6b35">▲金叉</span>
 <span style="color:#2a6f9c">▼死叉</span>
+<span style="border-left:3px solid #fff;color:#fff">DIF</span>
+<span style="border-left:3px solid #ffd700;color:#ffd700">DEA</span>
+<span style="color:#f44">MACD+</span>
+<span style="color:#00c853">MACD-</span>
 </div>
 <div class="cwrap">
 <canvas id="kc"></canvas>
@@ -82,19 +86,19 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=25, pd_b=42, scale=1, offset=0, isInit=true;
-var INITIAL_VIS = 60; // 初始显示最近60根K线
+var pd=25, pd_b=8, scale=1, offset=0, isInit=true;
+var MAIN_RATIO = 0.7; // 主图占70%，MACD占30%
+var INITIAL_VIS = 60;
 
 function resize(){{
   var r = c.parentElement.getBoundingClientRect();
   W = r.width;
-  H = Math.max(250, Math.min(W * 0.55, window.innerHeight * 0.7));
+  H = Math.max(350, Math.min(W * 0.7, window.innerHeight * 0.85));
   c.width = W * devicePixelRatio;
   c.height = H * devicePixelRatio;
   c.style.width = W + "px";
   c.style.height = H + "px";
   ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-  // 仅在首次加载时设置初始缩放
   if(isInit){{
     scale = n / INITIAL_VIS;
     offset = n - INITIAL_VIS;
@@ -110,44 +114,49 @@ function draw(){{
   if(n<2) return;
 
   var pw = W - pd - pd;
-  var ph = H - pd - pd_b;
+  var ph1 = (H - pd - pd_b) * MAIN_RATIO;  // 主图
+  var ph2 = (H - pd - pd_b) * (1 - MAIN_RATIO) - 30; // MACD副图（中间30px分隔）
+  var gapY = pd + ph1 + 15; // 分隔线位置
+  var macdY0 = gapY + 15;   // MACD绘图区起始
+
   var visN = Math.max(10, Math.floor(n / scale));
   var i0 = Math.floor(offset);
   if(i0 < 0) i0 = 0;
   if(i0 > n - visN) i0 = n - visN;
   var i1 = Math.min(i0 + visN, n);
 
-  var mn = 1e9, mx = -1e9;
-  for(var i=i0;i<i1;i++){{
-    if(D.lo[i] < mn) mn = D.lo[i];
-    if(D.hi[i] > mx) mx = D.hi[i];
-  }}
-  var rg = mx - mn || 1;
-
-  function yp(v){{ return pd + ph - (v-mn)/rg*ph }}
   function xp(i){{ return pd + (i-i0)/(i1-i0)*pw }}
 
-  // 网格
+  // ========== 主图 ==========
+  var mn1 = 1e9, mx1 = -1e9;
+  for(var i=i0;i<i1;i++){{
+    if(D.lo[i] < mn1) mn1 = D.lo[i];
+    if(D.hi[i] > mx1) mx1 = D.hi[i];
+  }}
+  var rg1 = mx1 - mn1 || 1;
+  function yp1(v){{ return pd + ph1 - (v-mn1)/rg1*ph1 }}
+
+  // 主图网格
   ctx.strokeStyle = "#222";
   ctx.lineWidth = 0.5;
   for(var g=0;g<5;g++){{
-    var yy = pd + g*ph/4;
+    var yy = pd + g*ph1/4;
     ctx.beginPath(); ctx.moveTo(pd,yy); ctx.lineTo(pd+pw,yy); ctx.stroke();
     ctx.fillStyle = "#666";
-    ctx.font = "8px Arial";
+    ctx.font = "7px Arial";
     ctx.textAlign = "end";
-    ctx.fillText(Math.round(mn + (1-g/4)*rg), pd-2, yy+3);
+    ctx.fillText(Math.round(mn1 + (1-g/4)*rg1), pd-2, yy+3);
   }}
 
-  function poly(arr, color, w, dash){{
+  function poly1(arr, color, w, dash){{
     ctx.strokeStyle = color;
     ctx.lineWidth = w;
-    ctx.setLineDash(dash ? [4,3] : []);
+    ctx.setLineDash(dash ? [3,2] : []);
     ctx.beginPath();
     var started = false;
     for(var i=i0;i<i1;i++){{
       if(arr[i]==null){{ started=false; continue; }}
-      var xx = xp(i), yy = yp(arr[i]);
+      var xx = xp(i), yy = yp1(arr[i]);
       if(!started){{ ctx.moveTo(xx,yy); started=true; }}
       else ctx.lineTo(xx,yy);
     }}
@@ -155,16 +164,16 @@ function draw(){{
     ctx.setLineDash([]);
   }}
 
-  function fillCloud(d1, d2, color){{
+  function fillCloud1(d1, d2, color){{
     ctx.fillStyle = color;
     ctx.beginPath();
     for(var i=i0;i<i1;i++){{
       if(d1[i]==null||d2[i]==null) continue;
-      ctx.lineTo(xp(i), yp(d1[i]));
+      ctx.lineTo(xp(i), yp1(d1[i]));
     }}
     for(var i=i1-1;i>=i0;i--){{
       if(d1[i]==null||d2[i]==null) continue;
-      ctx.lineTo(xp(i), yp(d2[i]));
+      ctx.lineTo(xp(i), yp1(d2[i]));
     }}
     ctx.closePath();
     ctx.fill();
@@ -176,60 +185,123 @@ function draw(){{
     while(j<i1 && D.sa_[j]!=null && D.sb_[j]!=null) j++;
     if(j>i){{
       var bullish = D.sa_[i] >= D.sb_[i];
-      fillCloud(D.sa_, D.sb_, bullish
-        ? "rgba(255,107,53,0.2)" : "rgba(42,111,156,0.2)");
+      fillCloud1(D.sa_, D.sb_, bullish ? "rgba(255,107,53,0.18)" : "rgba(42,111,156,0.18)");
     }}
     i=j;
   }}
 
-  poly(D.sa_, "#ff6b35", 1.5);
-  poly(D.sb_, "#2a6f9c", 1.5);
-  poly(D.ub, "#aa843e", 0.5, true);
-  poly(D.lb, "#aa843e", 0.5, true);
-  poly(D.boll, "#aa843e", 1);
-  poly(D.ma300, "#ffd700", 2);
-  poly(D.ub1, "#ffd700", 0.5, true);
-  poly(D.lb1, "#ffd700", 0.5, true);
-  // ±1SD300 已移除，保留 ±2SD
-  poly(D.ub2, "#888", 0.5, true);
-  poly(D.lb2, "#888", 0.5, true);
-  poly(D.ema5, "#fff", 1.5);
-  poly(D.ma50, "#0f0", 1.5);
-  poly(D.ma100, "#f44", 2);
+  poly1(D.sa_, "#ff6b35", 1.2);
+  poly1(D.sb_, "#2a6f9c", 1.2);
+  poly1(D.ub, "#aa843e", 0.5, true);
+  poly1(D.lb, "#aa843e", 0.5, true);
+  poly1(D.boll, "#aa843e", 1);
+  poly1(D.ma300, "#ffd700", 1.5);
+  poly1(D.ub1, "#ffd700", 0.5, true);
+  poly1(D.lb1, "#ffd700", 0.5, true);
+  poly1(D.ub2, "#666", 0.5, true);
+  poly1(D.lb2, "#666", 0.5, true);
+  poly1(D.ema5, "#fff", 1.2);
+  poly1(D.ma50, "#0f0", 1.2);
+  poly1(D.ma100, "#f44", 1.5);
 
   // K线
-  var cw2 = Math.max(1, Math.min(10, pw/(i1-i0)-2));
+  var cw2 = Math.max(1, Math.min(8, pw/(i1-i0)-1));
   var hw2 = cw2/2;
   for(var i=i0;i<i1;i++){{
     var x = xp(i);
     var col = D.op[i] < D.cl[i] ? "#ff4444" : "#00c853";
     ctx.strokeStyle = col;
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x,yp(D.hi[i])); ctx.lineTo(x,yp(D.lo[i])); ctx.stroke();
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(x,yp1(D.hi[i])); ctx.lineTo(x,yp1(D.lo[i])); ctx.stroke();
     ctx.fillStyle = col;
-    ctx.fillRect(x-hw2, Math.min(yp(D.op[i]),yp(D.cl[i])), cw2, Math.abs(yp(D.cl[i])-yp(D.op[i]))+1);
+    ctx.fillRect(x-hw2, Math.min(yp1(D.op[i]),yp1(D.cl[i])), cw2, Math.max(1, Math.abs(yp1(D.cl[i])-yp1(D.op[i]))));
   }}
 
   // 信号
-  ctx.font = "14px Arial";
+  ctx.font = "12px Arial";
   ctx.textAlign = "center";
   for(var i=Math.max(1,i0);i<i1;i++){{
     if(D.sa_[i]==null||D.sb_[i]==null||D.sa_[i-1]==null||D.sb_[i-1]==null) continue;
-    if(D.sa_[i-1]<=D.sb_[i-1]&&D.sa_[i]>D.sb_[i]){{
-      ctx.fillStyle = "#ff6b35";
-      ctx.fillText("▲", xp(i), yp(D.hi[i])-2);
-    }}
-    if(D.sa_[i-1]>=D.sb_[i-1]&&D.sa_[i]<D.sb_[i]){{
-      ctx.fillStyle = "#2a6f9c";
-      ctx.fillText("▼", xp(i), yp(D.lo[i])+12);
-    }}
+    if(D.sa_[i-1]<=D.sb_[i-1]&&D.sa_[i]>D.sb_[i])
+      {{ctx.fillStyle="#ff6b35"; ctx.fillText("▲", xp(i), yp1(D.hi[i])-2);}}
+    if(D.sa_[i-1]>=D.sb_[i-1]&&D.sa_[i]<D.sb_[i])
+      {{ctx.fillStyle="#2a6f9c"; ctx.fillText("▼", xp(i), yp1(D.lo[i])+12);}}
   }}
 
-  // 时间轴 — 两行：上 MMDD，下年（只在首尾和新年份）
+  // 主图边框
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.strokeRect(pd, pd, pw, ph1);
+
+  // ========== 分隔线 + MACD 标签 ==========
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(pd, gapY); ctx.lineTo(pd+pw, gapY); ctx.stroke();
+  ctx.fillStyle = "#888";
+  ctx.font = "9px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("MACD(12,26,9)", pd+4, gapY+11);
+
+  // ========== MACD 副图 ==========
+  // 找 dif 的范围
+  var mn2 = 0, mx2 = 0;
+  var hasMacd = false;
+  for(var i=i0;i<i1;i++){{
+    if(D.macd[i]==null) continue;
+    hasMacd = true;
+    if(D.macd[i] < mn2) mn2 = D.macd[i];
+    if(D.macd[i] > mx2) mx2 = D.macd[i];
+    if(D.dif[i] < mn2) mn2 = D.dif[i];
+    if(D.dif[i] > mx2) mx2 = D.dif[i];
+    if(D.dea[i] < mn2) mn2 = D.dea[i];
+    if(D.dea[i] > mx2) mx2 = D.dea[i];
+  }}
+  if(!hasMacd) mn2 = -10; mx2 = 10;
+  var rg2 = mx2 - mn2 || 1;
+  var padding2 = rg2 * 0.1;
+  mn2 -= padding2; mx2 += padding2;
+  rg2 = mx2 - mn2 || 1;
+  function yp2(v){{ return macdY0 + ph2 - (v-mn2)/rg2*ph2 }}
+
+  // MACD网格
+  ctx.strokeStyle = "#222";
+  ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(pd, yp2(0)); ctx.lineTo(pd+pw, yp2(0)); ctx.stroke();
+
+  // MACD柱
+  for(var i=i0;i<i1;i++){{
+    if(D.macd[i]==null) continue;
+    var x = xp(i);
+    var y0 = yp2(0);
+    var yv = yp2(D.macd[i]);
+    var col = D.macd[i] >= 0 ? "#f44" : "#00c853";
+    ctx.fillStyle = col;
+    ctx.fillRect(x-hw2*0.6, Math.min(y0, yv), cw2*0.6, Math.max(0.5, Math.abs(yv-y0)));
+  }}
+
+  // DIF（白色线）
+  poly1(D.dif, "#fff", 1);
+  // DEA（黄色虚线）
+  poly1(D.dea, "#ffd700", 1, true);
+
+  // MACD 刻度
+  ctx.fillStyle = "#666";
+  ctx.font = "7px Arial";
+  ctx.textAlign = "end";
+  ctx.fillText(mx2.toFixed(1), pd-2, yp2(mx2)+3);
+  ctx.fillText(mn2.toFixed(1), pd-2, yp2(mn2)+3);
+
+  // MACD 边框
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(pd, macdY0, pw, ph2);
+
+  // ========== 共享日期轴（放在MACD下方） ==========
   ctx.fillStyle = "#999";
   ctx.textAlign = "center";
   var visDays = i1 - i0;
-  var labelW = 40;
+  var labelW = 38;
   var labelStep = Math.max(1, Math.floor(labelW * visDays / pw));
   var lastYearShown = "";
   for(var i=i0;i<i1;i+=labelStep){{
@@ -238,20 +310,14 @@ function draw(){{
     var mmdd = parts[1] + parts[2];
     var yyyy = parts[0];
     var xx = xp(i);
-    // 上排：MMDD
-    ctx.font = "8px Arial";
-    ctx.fillText(mmdd, xx, pd+ph+12);
-    // 下排：年份（只在变化时显示）
+    ctx.font = "7px Arial";
+    var dateY = macdY0 + ph2 + 12;
+    ctx.fillText(mmdd, xx, dateY);
     if(yyyy !== lastYearShown){{
-      ctx.fillText(yyyy, xx, pd+ph+24);
+      ctx.fillText(yyyy, xx, dateY + 10);
       lastYearShown = yyyy;
     }}
   }}
-
-  ctx.strokeStyle = "#555";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([]);
-  ctx.strokeRect(pd, pd, pw, ph);
 }}
 
 // 触摸手势

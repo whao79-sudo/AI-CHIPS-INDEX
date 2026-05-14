@@ -69,9 +69,27 @@ def calc_indicators(cl, hi, lo):
     ub2 = [round(ma100[i] + 2 * s100[i], 2) if ma100[i] is not None else None for i in range(n)]
     lb2 = [round(ma100[i] - 2 * s100[i], 2) if ma100[i] is not None else None for i in range(n)]
 
+    # MACD
+    ema12 = ema_(cl, 12)
+    ema26 = ema_(cl, 26)
+    dif = [round(ema12[i] - ema26[i], 4) if i >= 25 else None for i in range(n)]
+    dea = []
+    for i in range(n):
+        if dif[i] is None or i == 0:
+            dea.append(None)
+        else:
+            j0 = max(0, i - 8)
+            vals = [dif[j] for j in range(j0, i+1) if dif[j] is not None]
+            if len(vals) >= 9:
+                dea.append(round(np.mean(vals[-9:]), 4))
+            else:
+                dea.append(None)
+    macd = [round(dif[i] - dea[i], 4) if dif[i] is not None and dea[i] is not None else None for i in range(n)]
+
     return {
         "tenkan": tenkan, "kijun": kijun, "sa_": sa_, "sb_": sb_,
         "boll": boll, "ub": ub, "lb": lb,
         "ma300": ma300, "ub1": ub1, "lb1": lb1, "ub1a": ub1a, "lb1a": lb1a,
         "ema5": ema5, "ma50": ma50, "ma100": ma100, "ub2": ub2, "lb2": lb2,
+        "dif": dif, "dea": dea, "macd": macd,
     }

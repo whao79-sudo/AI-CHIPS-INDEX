@@ -4,17 +4,26 @@ import numpy as np
 
 
 def calc_indicators(cl, hi, lo):
-    """计算所有指标，返回字典"""
+    """计算所有指标，返回字典
+    cl = 收盘价列表（用于一目均衡和均线）
+    hi = 最高价列表（仅用于布林线范围）
+    lo = 最低价列表（仅用于布林线范围）
+    """
     n = len(cl)
-    
-    # 一目均衡
+
+    # 一目均衡（方式B：用收盘价代替最高/最低价）
     tenkan = []
     kijun = []
     for i in range(n):
-        tenkan.append((hi[i] + lo[i]) / 2 if i >= 8 else None)
-        kijun.append((max(hi[max(0,i-25):i+1]) + min(lo[max(0,i-25):i+1])) / 2 if i >= 25 else None)
+        c9 = cl[max(0, i-8):i+1]
+        tenkan.append((max(c9) + min(c9)) / 2 if i >= 8 else None)
+        c26 = cl[max(0, i-25):i+1]
+        kijun.append((max(c26) + min(c26)) / 2 if i >= 25 else None)
     sa_ = [(tenkan[i] + kijun[i]) / 2 if tenkan[i] is not None and kijun[i] is not None else None for i in range(n)]
-    sb_ = [(max(hi[max(0,i-51):i+1]) + min(lo[max(0,i-51):i+1])) / 2 if i >= 51 else None for i in range(n)]
+    sb_ = []
+    for i in range(n):
+        c52 = cl[max(0, i-51):i+1]
+        sb_.append((max(c52) + min(c52)) / 2 if i >= 51 else None)
 
     # SMA
     def sma(d, p):

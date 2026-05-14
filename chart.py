@@ -68,18 +68,41 @@ def gen_kline_html(df, ind, title, stocks_list):
     for i in range(5):
         yy = pd_ + i * ph // 4
         v = mv + (1 - i / 4) * rg
-        gs += '<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#222" stroke-width="0.5"/>'.format(
-            pd_, yy, pd_ + pw, yy
-        )
-        gs += '<text x="{}" y="{}" fill="#666" font-size="11" text-anchor="end">{:.0f}</text>'.format(
-            pd_ - 5, yy + 4, v
-        )
+        gs += '<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#222" stroke-width="0.5"/>'.format(pd_, yy, pd_ + pw, yy)
+        gs += '<text x="{}" y="{}" fill="#666" font-size="11" text-anchor="end">{:.0f}</text>'.format(pd_ - 5, yy + 4, v)
 
-    # 云层
-    sg += fill_area(ind["sa_"], ind["sb_"], "#2f4f4f")
-    sg += fill_area(ind["sb_"], ind["sa_"], "#8b4513")
-    sg += poly(ind["sa_"], "#2f4f4f", 1)
-    sg += poly(ind["sb_"], "#8b4513", 1)
+    # 云层：多头暖色(sa>sb)，空头冷色(sa<sb)
+    sa_ = ind["sa_"]
+    sb_ = ind["sb_"]
+    bullish_fill = []
+    bearish_fill = []
+    for i in range(n):
+        if sa_[i] is not None and sb_[i] is not None:
+            if sa_[i] >= sb_[i]:
+                bullish_fill.append(i)
+            else:
+                bearish_fill.append(i)
+
+    def fill_range(idx_list, d1, d2, color):
+        if not idx_list:
+            return ""
+        pts = []
+        for i in idx_list:
+            if d1[i] is None or d2[i] is None:
+                continue
+            pts.append("{},{}".format(xp(i), yp(d1[i])))
+        for i in reversed(idx_list):
+            if d1[i] is None or d2[i] is None:
+                continue
+            pts.append("{},{}".format(xp(i), yp(d2[i])))
+        if not pts:
+            return ""
+        return '<polygon points="{}" fill="{}" opacity="0.25"/>'.format(" ".join(pts), color)
+
+    sg += fill_range(bullish_fill, sa_, sb_, "#ff6b35")
+    sg += fill_range(bearish_fill, sa_, sb_, "#2a6f9c")
+    sg += poly(sa_, "#ff6b35", 1.5)
+    sg += poly(sb_, "#2a6f9c", 1.5)
     # BOLL20
     sg += poly(ind["ub"], "#aa843e", 0.5, "dash")
     sg += poly(ind["lb"], "#aa843e", 0.5, "dash")
@@ -106,42 +129,25 @@ def gen_kline_html(df, ind, title, stocks_list):
         y_lo = yp(lo[i])
         y_cl = yp(cl[i])
         c = "#ff4444" if op[i] < cl[i] else "#00c853"
-        sg += '<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" stroke-width="1.5"/>'.format(
-            x, y_hi, x, y_lo, c
-        )
-        sg += '<rect x="{}" y="{}" width="{}" height="{}" fill="{}" rx="1"/>'.format(
-            x - hw, min(y_op, y_cl), cw, abs(y_cl - y_op) + 1, c
-        )
+        sg += '<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" stroke-width="1.5"/>'.format(x, y_hi, x, y_lo, c)
+        sg += '<rect x="{}" y="{}" width="{}" height="{}" fill="{}" rx="1"/>'.format(x - hw, min(y_op, y_cl), cw, abs(y_cl - y_op) + 1, c)
 
     # 交叉信号
-    sa_ = ind["sa_"]
-    sb_ = ind["sb_"]
     for i in range(1, n):
         if sa_[i] is not None and sb_[i] is not None and sa_[i-1] is not None and sb_[i-1] is not None:
             if sa_[i-1] <= sb_[i-1] and sa_[i] > sb_[i]:
-                sg += '<text x="{}" y="{}" fill="#f44" font-size="20" text-anchor="middle" dominant-baseline="bottom">▲</text>'.format(
-                    xp(i), yp(hi[i]) - 2
-                )
+                sg += '<text x="{}" y="{}" fill="#ff6b35" font-size="20" text-anchor="middle" dominant-baseline="bottom">▲</text>'.format(xp(i), yp(hi[i]) - 2)
             if sa_[i-1] >= sb_[i-1] and sa_[i] < sb_[i]:
-                sg += '<text x="{}" y="{}" fill="#0f0" font-size="20" text-anchor="middle" dominant-baseline="top">▼</text>'.format(
-                    xp(i), yp(lo[i]) + 2
-                )
+                sg += '<text x="{}" y="{}" fill="#2a6f9c" font-size="20" text-anchor="middle" dominant-baseline="top">▼</text>'.format(xp(i), yp(lo[i]) + 2)
 
     # 时间轴
     for i in range(n):
         if i % 60 == 0 or i == n - 1:
-            xt += '<text x="{}" y="{}" fill="#666" font-size="10" text-anchor="middle">{}</text>'.format(
-                xp(i), pd_ + ph + 20, ds[i]
-            )
+            xt += '<text x="{}" y="{}" fill="#666" font-size="10" text-anchor="middle">{}</text>'.format(xp(i), pd_ + ph + 20, ds[i])
 
-    box = '<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke="#444" stroke-width="1"/>'.format(
-        pd_, pd_, pw, ph
-    )
-    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" style="width:100%;height:auto;max-width:{}px">{}{}{}</svg>'.format(
-        W, H, W, gs + box, sg, xt
-    )
+    box = '<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke="#444" stroke-width="1"/>'.format(pd_, pd_, pw, ph)
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" style="width:100%;height:auto;max-width:{}px">{}{}{}</svg>'.format(W, H, W, gs + box, sg, xt)
 
-    # 统计数据
     stats = ""
     for l, v in [
         ("最新点位", str(lt["index_value"])),
@@ -183,16 +189,16 @@ h1{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}
 <h1>''' + title + '''</h1>
 <div class="stats">''' + stats + '''</div>
 <div class="leg">
-<span style="border-left:3px solid #2f4f4f;color:#2f4f4f">先行A</span>
-<span style="border-left:3px solid #8b4513;color:#8b4513">先行B</span>
+<span style="border-left:3px solid #ff6b35;color:#ff6b35">先行A</span>
+<span style="border-left:3px solid #2a6f9c;color:#2a6f9c">先行B</span>
 <span style="border-left:3px solid #aa843e;color:#aa843e">BOL20</span>
 <span style="border-left:3px solid #ffd700;color:#ffd700">MA300</span>
 <span style="border-left:3px solid #4682b4;color:#4682b4">±1SD300</span>
 <span style="border-left:3px solid #fff;color:#fff">EMA5</span>
 <span style="border-left:3px solid #0f0">MA50</span>
 <span style="border-left:3px solid #f44;color:#f44">MA100</span>
-<span style="color:#ff4444">▲金叉</span>
-<span style="color:#0f0">▼死叉</span>
+<span style="color:#ff6b35">▲金叉</span>
+<span style="color:#2a6f9c">▼死叉</span>
 </div>
 <div class="cwrap">''' + svg + '''</div>
 <div class="info">成分股（等权重）：''' + sn + ''' | Cloud+Ichimoku+Bollinger | ''' + datetime.now().strftime("%Y-%m-%d %H:%M") + '''</div>

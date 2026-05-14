@@ -17,7 +17,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: pip install pandas numpy requests PyYAML
+      - run: pip install pandas numpy requests PyYAML baostock
+      - name: Download historical csv
+        run: |
+          if git show-ref --quiet refs/remotes/origin/gh-pages 2>/dev/null; then
+            git fetch origin gh-pages
+            git checkout gh-pages -- stocks_history.csv 2>/dev/null || true
+            git checkout gh-pages -- output/AI_CHIP_INDEX_stocks.csv 2>/dev/null || true
+          fi
       - run: python main.py
       - run: cp output/AI_CHIP_INDEX_kline.html index.html
       - uses: actions/upload-pages-artifact@v3

@@ -27,7 +27,7 @@ def fetch_baostock(code, start_date, end_date):
             frequency="d", adjustflag="2"
         )
         if rs.error_code != "0":
-            print(" Baostock err:", rs.error_code)
+            print("    Baostock err:", rs.error_code)
             bs.logout()
             return None
         rows = []
@@ -40,10 +40,10 @@ def fetch_baostock(code, start_date, end_date):
         for c in ["open", "high", "low", "close", "volume"]:
             df[c] = pd.to_numeric(df[c], errors="coerce")
         df["code"] = code
-        print(" Baostock: {} rows".format(len(df)))
+        print("    Baostock: {} rows".format(len(df)))
         return df[["date", "code", "open", "high", "low", "close", "volume"]]
     except Exception as e:
-        print(" Baostock fail:", e)
+        print("    Baostock fail:", e)
         try:
             bs.logout()
         except:
@@ -63,10 +63,10 @@ def fetch_sina(code, datalen=1000):
         for c in ["open", "high", "low", "close", "volume"]:
             df[c] = pd.to_numeric(df[c], errors="coerce")
         df["code"] = code
-        print(" Sina: {} rows".format(len(df)))
+        print("    Sina: {} rows".format(len(df)))
         return df[["date", "code", "open", "high", "low", "close", "volume"]]
     except Exception as e:
-        print(" Sina fail:", e)
+        print("    Sina fail:", e)
         return None
 
 
@@ -125,18 +125,19 @@ class IndexGenerator:
                     last_date = pd.to_datetime(sub["date"]).max()
             if last_date is not None:
                 fetch_start = last_date + timedelta(days=1)
-                print(" [{}/{}] {} {} incr from {}...".format(
-                    i, len(self.stocks), name, code, last_date.strftime("%Y-%m-%d")))
+                print("  [{}/{}] {} {} incr from {}...".format(
+                    i, len(self.stocks), name, code,
+                    last_date.strftime("%Y-%m-%d")))
                 df = fetch_baostock(code, fetch_start, end_date)
                 if df is None or len(df) == 0:
-                    print(" -> fallback Sina")
+                    print("  -> fallback Sina")
                     df = fetch_sina(code, datalen=15)
             else:
-                print(" [{}/{}] {} {} full...".format(
+                print("  [{}/{}] {} {} full...".format(
                     i, len(self.stocks), name, code))
                 df = fetch_baostock(code, start_date, end_date)
                 if df is None or len(df) == 0:
-                    print(" -> fallback Sina")
+                    print("  -> fallback Sina")
                     df = fetch_sina(code, datalen=1000)
             if df is not None and len(df) > 0:
                 df["name"] = name
@@ -162,7 +163,7 @@ class IndexGenerator:
         d = d.sort_values(["code", "date"])
         g = d.groupby(d["date"].dt.strftime("%Y-%m-%d")).agg(
             {"open": "mean", "high": "mean",
-            "low": "mean", "close": "mean"}
+             "low": "mean", "close": "mean"}
         ).reset_index().rename(columns={"date": "ds"})
         if len(g) == 0:
             return None
@@ -211,7 +212,8 @@ class IndexGenerator:
             return
         self.save(s, i)
         print("Done! Latest: {:.2f}, Return: {:.2f}%".format(
-            i["index_value"].iloc[-1], i["cumulative_return"].iloc[-1]))
+            i["index_value"].iloc[-1],
+            i["cumulative_return"].iloc[-1]))
 
 
 if __name__ == "__main__":

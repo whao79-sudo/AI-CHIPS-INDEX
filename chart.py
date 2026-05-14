@@ -37,33 +37,21 @@ def gen_kline_html(df, ind, title, stocks_list):
 <title>{title}</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{background:#050518;color:#ddd;font-family:Arial,sans-serif;padding:10px;overflow:hidden;touch-action:none}}
-h1{{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}}
-.stats{{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 auto 12px;max-width:500px}}
-.stat{{background:#0d0d28;padding:12px;border-radius:8px;text-align:center}}
-.stat .v{{font-size:22px;color:#00d4ff;font-weight:bold}}
-.stat .l{{font-size:11px;color:#888;margin-top:3px}}
-.cwrap{{background:#0d0d28;border-radius:8px;padding:5px;width:100%;height:auto}}
+body{{background:#050518;color:#ddd;font-family:Arial,sans-serif;padding:5px;overflow:hidden;touch-action:none}}
+h1{{text-align:center;color:#00d4ff;font-size:16px;margin:6px 0}}
+.cwrap{{background:#0d0d28;border-radius:8px;padding:3px;width:100%}}
 canvas{{display:block;width:100%;height:auto;touch-action:none}}
-.leg{{text-align:center;margin:6px 0;font-size:10px;line-height:1.6}}
-.leg span{{display:inline-block;padding:0 4px;margin:0 2px;border-radius:2px}}
-.info{{text-align:center;margin:6px 0;font-size:10px;color:#555;line-height:1.5}}
+.leg{{text-align:center;margin:4px 0;font-size:10px;line-height:1.5}}
+.leg span{{display:inline-block;padding:0 3px;margin:0 1px;border-radius:2px;white-space:nowrap}}
+.info{{text-align:center;margin:4px 0;font-size:9px;color:#555;line-height:1.4}}
 @media(min-width:768px){{
-  body{{padding:20px 40px}}
-  h1{{font-size:28px}}
-  .stats{{grid-template-columns:1fr 1fr 1fr 1fr;max-width:none}}
-  .stat .v{{font-size:28px}}
+  body{{padding:15px 30px}}
+  h1{{font-size:24px}}
 }}
 </style>
 </head>
 <body>
 <h1>{title}</h1>
-<div class="stats">
-<div class="stat"><div class="v">{lv}</div><div class="l">最新点位</div></div>
-<div class="stat"><div class="v">{cr}%</div><div class="l">累计涨幅</div></div>
-<div class="stat"><div class="v">{n}</div><div class="l">交易日</div></div>
-<div class="stat"><div class="v">{ds[0]}</div><div class="l">起始日</div></div>
-</div>
 <div class="leg">
 <span style="border-left:3px solid #ff6b35;color:#ff6b35">先行A</span>
 <span style="border-left:3px solid #2a6f9c;color:#2a6f9c">先行B</span>
@@ -88,15 +76,13 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=60, scale=1, offset=0;
+var pd=55, scale=1, offset=0;
 
 function resize(){{
   var r = c.parentElement.getBoundingClientRect();
   W = r.width;
-  // 竖屏取75%高度，横屏取85%
-  H = window.innerWidth > window.innerHeight
-    ? window.innerHeight * 0.85
-    : window.innerHeight * 0.75;
+  // 横向宽幅比例：高度按宽度比例缩小（类似卷轴效果）
+  H = Math.max(250, Math.min(W * 0.55, window.innerHeight * 0.7));
   c.width = W * devicePixelRatio;
   c.height = H * devicePixelRatio;
   c.style.width = W + "px";
@@ -117,7 +103,6 @@ function draw(){{
   var i0 = Math.floor(clamp(offset, 0, n - visN));
   var i1 = Math.min(i0 + visN, n);
 
-  // 价格范围
   var mn = 1e9, mx = -1e9;
   for(var i=i0;i<i1;i++){{
     if(D.lo[i] < mn) mn = D.lo[i];
@@ -159,12 +144,9 @@ function draw(){{
   function fillCloud(d1, d2, color){{
     ctx.fillStyle = color;
     ctx.beginPath();
-    var started = false;
     for(var i=i0;i<i1;i++){{
-      if(d1[i]==null||d2[i]==null){{ started=false; continue; }}
-      var xx = xp(i), yy = yp(d1[i]);
-      if(!started){{ ctx.moveTo(xx,yy); started=true; }}
-      else ctx.lineTo(xx,yy);
+      if(d1[i]==null||d2[i]==null) continue;
+      ctx.lineTo(xp(i), yp(d1[i]));
     }}
     for(var i=i1-1;i>=i0;i--){{
       if(d1[i]==null||d2[i]==null) continue;
@@ -181,8 +163,7 @@ function draw(){{
     if(j>i){{
       var bullish = D.sa_[i] >= D.sb_[i];
       fillCloud(D.sa_, D.sb_, bullish
-        ? "rgba(255,107,53,0.22)"
-        : "rgba(42,111,156,0.22)", i, j);
+        ? "rgba(255,107,53,0.2)" : "rgba(42,111,156,0.2)");
     }}
     i=j;
   }}
@@ -217,7 +198,7 @@ function draw(){{
   }}
 
   // 信号
-  ctx.font = "16px Arial";
+  ctx.font = "14px Arial";
   ctx.textAlign = "center";
   for(var i=Math.max(1,i0);i<i1;i++){{
     if(D.sa_[i]==null||D.sb_[i]==null||D.sa_[i-1]==null||D.sb_[i-1]==null) continue;
@@ -227,44 +208,40 @@ function draw(){{
     }}
     if(D.sa_[i-1]>=D.sb_[i-1]&&D.sa_[i]<D.sb_[i]){{
       ctx.fillStyle = "#2a6f9c";
-      ctx.fillText("▼", xp(i), yp(D.lo[i])+14);
+      ctx.fillText("▼", xp(i), yp(D.lo[i])+12);
     }}
   }}
 
-  // 时间轴 - 动态间隔防重叠
+  // 时间轴
   ctx.fillStyle = "#888";
   ctx.font = "10px Arial";
   ctx.textAlign = "center";
   var visDays = i1 - i0;
-  // 屏幕宽度上一行日期大概占35px，算间隔
-  var labelW = 60;
+  var labelW = 55;
   var labelStep = Math.max(1, Math.floor(labelW * visDays / pw));
   for(var i=i0;i<i1;i+=labelStep){{
-    ctx.fillText(D.ds[i], xp(i), pd+ph+15);
+    ctx.fillText(D.ds[i], xp(i), pd+ph+14);
   }}
 
-  // 边框
   ctx.strokeStyle = "#555";
   ctx.lineWidth = 1;
   ctx.setLineDash([]);
   ctx.strokeRect(pd, pd, pw, ph);
 }}
 
-// 触摸
+// 触摸手势（同前）
 var isDragging = false;
 var dragStartX = 0, dragStartOff = 0;
+var lastDist = 0;
 
 c.addEventListener("touchstart", function(e){{
   e.preventDefault();
   var t = e.touches;
   if(t.length==1){{
-    isDragging = true;
-    dragStartX = t[0].clientX;
-    dragStartOff = offset;
+    isDragging = true; dragStartX = t[0].clientX; dragStartOff = offset;
   }} else if(t.length==2){{
     isDragging = false;
     lastDist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
-    lastCX = (t[0].clientX+t[1].clientX)/2;
   }}
 }}, {{passive:false}});
 
@@ -278,7 +255,7 @@ c.addEventListener("touchmove", function(e){{
     draw();
   }} else if(t.length==2){{
     var dist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
-    var s = dist / (lastDist||1);
+    var s = dist / Math.max(1, lastDist);
     var cx = (t[0].clientX+t[1].clientX)/2;
     var cxRatio = cx / W;
     var oldScale = scale;
@@ -294,7 +271,6 @@ c.addEventListener("touchmove", function(e){{
 
 c.addEventListener("touchend", function(e){{ isDragging=false; }});
 
-// 鼠标滚轮
 c.addEventListener("wheel", function(e){{
   e.preventDefault();
   var r = c.getBoundingClientRect();
@@ -308,11 +284,8 @@ c.addEventListener("wheel", function(e){{
   draw();
 }}, {{passive:false}});
 
-// 鼠标拖拽
 c.addEventListener("mousedown", function(e){{
-  isDragging = true;
-  dragStartX = e.clientX;
-  dragStartOff = offset;
+  isDragging = true; dragStartX = e.clientX; dragStartOff = offset;
 }});
 window.addEventListener("mousemove", function(e){{
   if(!isDragging) return;
@@ -328,7 +301,7 @@ resize();
 
 }})();
 </script>
-<div class="info">成分股（等权重）：{sn} | Cloud+Ichimoku+Bollinger | {datetime.now().strftime("%Y-%m-%d %H:%M")}</div>
+<div class="info">成分股（等权重）：{sn} | {lv}({cr}%) | Cloud+Ichimoku+Bollinger | {datetime.now().strftime("%Y-%m-%d")}</div>
 </body>
 </html>'''
     return html

@@ -244,7 +244,7 @@ function draw(){{
   ctx.fillText("MACD(12,26,9)", pd+4, gapY+11);
 
   // ========== MACD 副图 ==========
-  // 找 dif 的范围
+  // 找 dif/DEA/MACD 的范围 + 额外 padding
   var mn2 = 0, mx2 = 0;
   var hasMacd = false;
   for(var i=i0;i<i1;i++){{
@@ -257,12 +257,18 @@ function draw(){{
     if(D.dea[i] < mn2) mn2 = D.dea[i];
     if(D.dea[i] > mx2) mx2 = D.dea[i];
   }}
-  if(!hasMacd) mn2 = -10; mx2 = 10;
-  var rg2 = mx2 - mn2 || 1;
-  var padding2 = rg2 * 0.1;
+  if(!hasMacd) {{ mn2 = -10; mx2 = 10; }}
+  var padding2 = Math.max(Math.abs(mx2 - mn2) * 0.15, Math.abs(mx2 - mn2) * 0.15 || 1);
   mn2 -= padding2; mx2 += padding2;
-  rg2 = mx2 - mn2 || 1;
-  function yp2(v){{ return macdY0 + ph2 - (v-mn2)/rg2*ph2 }}
+  var rg2 = mx2 - mn2 || 1;
+  // y 值严格限制在副图框内
+  function yp2(v){{ return Math.max(macdY0, Math.min(macdY0 + ph2, macdY0 + ph2 - (v-mn2)/rg2*ph2)); }}
+
+  // 裁剪区 — 确保 MACD 内容不超出副图框
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pd, macdY0, pw, ph2);
+  ctx.clip();
 
   // MACD网格
   ctx.strokeStyle = "#222";
@@ -292,7 +298,8 @@ function draw(){{
   ctx.fillText(mx2.toFixed(1), pd-2, yp2(mx2)+3);
   ctx.fillText(mn2.toFixed(1), pd-2, yp2(mn2)+3);
 
-  // MACD 边框
+  // MACD 边框（在 clip 之后画边框，确保线条清晰）
+  ctx.restore();
   ctx.strokeStyle = "#333";
   ctx.lineWidth = 1;
   ctx.strokeRect(pd, macdY0, pw, ph2);

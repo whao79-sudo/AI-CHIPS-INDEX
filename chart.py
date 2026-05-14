@@ -293,10 +293,24 @@ function draw(){{
     ctx.fillRect(x-hw2*0.6, Math.min(y0, yv), cw2*0.6, Math.max(0.5, Math.abs(yv-y0)));
   }}
 
-  // DIF（白色线）
-  poly1(D.dif, "#fff", 1);
-  // DEA（黄色虚线）
-  poly1(D.dea, "#ffd700", 1, true);
+  // MACD 线 — 单独用 poly2（使用 yp2）
+  function poly2(arr, color, w, dash){{
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.setLineDash(dash ? [3,2] : []);
+    ctx.beginPath();
+    var started = false;
+    for(var i=i0;i<i1;i++){{
+      if(arr[i]==null){{ started=false; continue; }}
+      var xx = xp(i), yy = yp2(arr[i]);
+      if(!started){{ ctx.moveTo(xx,yy); started=true; }}
+      else ctx.lineTo(xx,yy);
+    }}
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }}
+  poly2(D.dif, "#fff", 1);
+  poly2(D.dea, "#ffd700", 1, true);
 
   // MACD 刻度
   ctx.fillStyle = "#666";

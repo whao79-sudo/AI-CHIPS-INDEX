@@ -125,6 +125,8 @@ function switchPeriod(week){{
   isInit = true; // 触发一次初始缩放
   resize();
 }}
+// 挂到全局以便 onclick 调用
+window.switchPeriod = switchPeriod;
 
 var c = document.getElementById("kc");
 var ctx = c.getContext("2d");

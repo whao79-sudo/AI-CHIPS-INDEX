@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Chip Index Generator - Standalone Version
+AI Chip Index Generator - 纯内嵌折线图版（无需CDN）
 """
-
-import pandas as pd
-import numpy as np
-import requests
-import yaml
-import os
-import sys
+import pandas as pd, numpy as np, requests, yaml, os, sys, json
 from datetime import datetime
 from pathlib import Path
 
@@ -27,296 +21,198 @@ class IndexGenerator:
                 return yaml.safe_load(f)
         return {
             "stocks": [
-                {"name": "中际旭创", "code": "sz300308"},
-                {"name": "新易盛", "code": "sz300502"},
-                {"name": "天孚通信", "code": "sz300394"},
-                {"name": "海光信息", "code": "sh688041"},
-                {"name": "寒武纪", "code": "sh688256"},
-                {"name": "龙芯中科", "code": "sh688047"},
-                {"name": "工业富联", "code": "sh601138"},
-                {"name": "浪潮信息", "code": "sz000977"},
-                {"name": "中科曙光", "code": "sh603019"},
-                {"name": "香农芯创", "code": "sz300475"},
-                {"name": "佰维存储", "code": "sh688525"},
-                {"name": "德明利", "code": "sz001309"},
-                {"name": "江波龙", "code": "sz301308"},
-                {"name": "兆易创新", "code": "sh603986"},
+                {"name":"中际旭创","code":"sz300308"},{"name":"新易盛","code":"sz300502"},
+                {"name":"天孚通信","code":"sz300394"},{"name":"海光信息","code":"sh688041"},
+                {"name":"寒武纪","code":"sh688256"},{"name":"龙芯中科","code":"sh688047"},
+                {"name":"工业富联","code":"sh601138"},{"name":"浪潮信息","code":"sz000977"},
+                {"name":"中科曙光","code":"sh603019"},{"name":"香农芯创","code":"sz300475"},
+                {"name":"佰维存储","code":"sh688525"},{"name":"德明利","code":"sz001309"},
+                {"name":"江波龙","code":"sz301308"},{"name":"兆易创新","code":"sh603986"},
             ],
-            "index": {"base_date": "2024-01-02", "base_value": 1000.0},
-            "output": {"dir": "./output", "start_date": "2024-01-01", "end_date": None},
+            "index":{"base_date":"2024-01-02","base_value":1000.0},
+            "output":{"dir":"./output","start_date":"2024-01-01","end_date":None},
         }
 
     def fetch_stock_data(self, code, timeout=15):
         url = "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale=240&ma=no&datalen=1000".format(code)
         try:
-            response = requests.get(url, timeout=timeout, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            })
-            response.raise_for_status()
-            data = response.json()
-            if not data:
-                return None
-            df = pd.DataFrame(data)
-            df = df.rename(columns={
-                "day": "date", "open": "open", "high": "high",
-                "low": "low", "close": "close", "volume": "volume"
-            })
-            for col in ["open", "high", "low", "close", "volume"]:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            df["code"] = code
-            df["amount"] = df["volume"] * df["close"]
-            return df[["date", "code", "open", "high", "low", "close", "volume", "amount"]]
+            r = requests.get(url, timeout=timeout, headers={"User-Agent":"Mozilla/5.0"})
+            r.raise_for_status(); data = r.json()
+            if not data: return None
+            df = pd.DataFrame(data).rename(columns={"day":"date","open":"open","high":"high","low":"low","close":"close","volume":"volume"})
+            for c in ["open","high","low","close","volume"]: df[c] = pd.to_numeric(df[c], errors='coerce')
+            df["code"]=code; df["amount"]=df["volume"]*df["close"]
+            return df[["date","code","open","high","low","close","volume","amount"]]
         except Exception as e:
-            print("Fail {}: {}".format(code, e))
-            return None
+            print("Fail {}: {}".format(code, e)); return None
 
     def fetch_data(self, start_date=None, end_date=None):
+        if not start_date: start_date = self.config["output"].get("start_date","2024-01-01")
+        if not end_date: end_date = datetime.now().strftime("%Y-%m-%d")
         print("Fetching {} stocks...".format(len(self.stocks)))
-        if start_date is None:
-            start_date = self.config["output"].get("start_date", "2024-01-01")
-        if end_date is None:
-            end_date = self.config["output"].get("end_date")
-        if end_date is None:
-            end_date = datetime.now().strftime("%Y-%m-%d")
-
-        all_stocks_df = []
-        for i, stock in enumerate(self.stocks, 1):
-            print("  [{}/{}] {} ({})...".format(i, len(self.stocks), stock['name'], stock['code']), end=" ", flush=True)
-            df = self.fetch_stock_data(stock["code"])
-            if df is not None and len(df) > 0:
-                df["name"] = stock["name"]
-                all_stocks_df.append(df)
-                print("OK {} rows".format(len(df)))
-            else:
-                print("NO DATA")
-
-        if not all_stocks_df:
-            return None
-
-        stocks_df = pd.concat(all_stocks_df, ignore_index=True)
-        stocks_df = stocks_df[(stocks_df["date"] >= start_date) & (stocks_df["date"] <= end_date)]
-        print("Total: {} rows".format(len(stocks_df)))
-        return stocks_df
+        all_df = []
+        for i,s in enumerate(self.stocks,1):
+            print("  [{}/{}] {} ({})...".format(i,len(self.stocks),s['name'],s['code']))
+            df = self.fetch_stock_data(s["code"])
+            if df is not None and len(df)>0: df["name"]=s["name"]; all_df.append(df)
+        if not all_df: return None
+        df = pd.concat(all_df, ignore_index=True)
+        return df[(df["date"]>=start_date)&(df["date"]<=end_date)]
 
     def calculate_index(self, stocks_df):
-        print("Calculating index...")
-        stocks_df = stocks_df.copy()
-        stocks_df["date"] = pd.to_datetime(stocks_df["date"])
-        stocks_df = stocks_df.sort_values(["code", "date"])
+        stocks_df = stocks_df.copy(); stocks_df["date"]=pd.to_datetime(stocks_df["date"])
+        stocks_df = stocks_df.sort_values(["code","date"])
+        d = stocks_df.groupby(stocks_df["date"].dt.strftime("%Y-%m-%d")).agg({"open":"mean","high":"mean","low":"mean","close":"mean"}).reset_index().rename(columns={"date":"ds"})
+        if len(d)==0: return None
+        b = self.index_config["base_value"]
+        d["index_value"] = (d["close"]/d["close"].iloc[0]*b).round(2)
+        d["daily_return"] = (d["index_value"].pct_change(fill_method=None)*100).round(2)
+        d["cumulative_return"] = ((d["index_value"]/b-1)*100).round(2)
+        d.loc[0,["daily_return","cumulative_return"]] = 0.0
+        s = b/d["close"].iloc[0]
+        for c in ["open","high","low","close"]: d[c] = (d[c]*s).round(2)
+        return d.rename(columns={"ds":"date"})
 
-        daily_ohlc = stocks_df.groupby(stocks_df["date"].dt.strftime("%Y-%m-%d")).agg({
-            "open": "mean", "high": "mean", "low": "mean", "close": "mean"
-        }).reset_index()
-        daily_ohlc.rename(columns={"date": "date_str"}, inplace=True)
-
-        if len(daily_ohlc) == 0:
-            return None
-
-        base_close = daily_ohlc["close"].iloc[0]
-        base_value = self.index_config["base_value"]
-        daily_ohlc["index_value"] = (daily_ohlc["close"] / base_close * base_value).round(2)
-        daily_ohlc["daily_return"] = (daily_ohlc["index_value"].pct_change(fill_method=None) * 100).round(2)
-        daily_ohlc["cumulative_return"] = ((daily_ohlc["index_value"] / base_value - 1) * 100).round(2)
-        daily_ohlc.loc[0, "daily_return"] = 0.0
-        daily_ohlc.loc[0, "cumulative_return"] = 0.0
-
-        scale = base_value / daily_ohlc["close"].iloc[0]
-        daily_ohlc["open"] = (daily_ohlc["open"] * scale).round(2)
-        daily_ohlc["high"] = (daily_ohlc["high"] * scale).round(2)
-        daily_ohlc["low"] = (daily_ohlc["low"] * scale).round(2)
-        daily_ohlc["close"] = (daily_ohlc["close"] * scale).round(2)
-
-        return daily_ohlc.rename(columns={"date_str": "date"})
-
-    def generate_kline_html(self, df, title="AI CHIP INDEX"):
-        dates = df["date"].tolist()
-        opens = df["open"].tolist()
-        highs = df["high"].tolist()
-        lows = df["low"].tolist()
-        closes = df["close"].tolist()
-
-        def sma(data, period):
-            result = []
-            for i in range(len(data)):
-                if i < period - 1:
-                    result.append(None)
-                else:
-                    result.append(sum(data[i-period+1:i+1]) / period)
-            return result
-
-        def ema(data, period):
-            result = []
-            multiplier = 2 / (period + 1)
-            ema_val = data[0]
-            for i in range(len(data)):
-                if i < period - 1:
-                    result.append(None)
-                elif i == period - 1:
-                    ema_val = sum(data[:period]) / period
-                    result.append(ema_val)
-                else:
-                    ema_val = (data[i] - ema_val) * multiplier + ema_val
-                    result.append(ema_val)
-            return result
-
-        def hhv(data, period):
-            result = []
-            for i in range(len(data)):
-                if i < period - 1:
-                    result.append(None)
-                else:
-                    result.append(max(data[i-period+1:i+1]))
-            return result
-
-        def llv(data, period):
-            result = []
-            for i in range(len(data)):
-                if i < period - 1:
-                    result.append(None)
-                else:
-                    result.append(min(data[i-period+1:i+1]))
-            return result
-
-        high9 = hhv(highs, 9); low9 = llv(lows, 9)
-        high26 = hhv(highs, 26); low26 = llv(lows, 26)
-        high52 = hhv(highs, 52); low52 = llv(lows, 52)
-
-        tenkan = [(h + l) / 2 if h is not None and l is not None else None for h, l in zip(high9, low9)]
-        kijun = [(h + l) / 2 if h is not None and l is not None else None for h, l in zip(high26, low26)]
-        senkouA = [(t + k) / 2 if t is not None and k is not None else None for t, k in zip(tenkan, kijun)]
-        senkouB = [(h + l) / 2 if h is not None and l is not None else None for h, l in zip(high52, low52)]
-
-        ma20 = sma(closes, 20)
-        ma300 = sma(closes, 300)
-        ema5 = ema(closes, 5)
-        ma50 = sma(closes, 50)
-        ma100 = sma(closes, 100)
-
-        crossSignals = []
-        for i in range(1, len(senkouA)):
-            if senkouA[i] and senkouB[i] and senkouA[i-1] and senkouB[i-1]:
-                if senkouA[i-1] <= senkouB[i-1] and senkouA[i] > senkouB[i]:
-                    crossSignals.append({"x": dates[i], "y": highs[i] * 1.002, "type": "buy"})
-                if senkouB[i-1] <= senkouA[i-1] and senkouB[i] > senkouA[i]:
-                    crossSignals.append({"x": dates[i], "y": lows[i] * 0.998, "type": "sell"})
-
-        # 用 JSON 格式传递数据，避免 JavaScript 转义问题
-        import json
-        dates_json = json.dumps(dates)
-        opens_json = json.dumps(opens)
-        highs_json = json.dumps(highs)
-        lows_json = json.dumps(lows)
-        closes_json = json.dumps(closes)
-        senkouA_json = json.dumps(senkouA)
-        senkouB_json = json.dumps(senkouB)
-        ema5_json = json.dumps(ema5)
-        ma50_json = json.dumps(ma50)
-        ma100_json = json.dumps(ma100)
-        sig_json = json.dumps(crossSignals)
-
-        latest_close = df["index_value"].iloc[-1]
-        cum_return = df["cumulative_return"].iloc[-1]
-        num_days = len(df)
-        start_date = dates[0]
-
-        html = """<!DOCTYPE html>
+    def gen_html(self, df, title="AI CHIP INDEX"):
+        datas = json.dumps([{"d":r["date"],"v":r["index_value"],"o":r["open"],"h":r["high"],"l":r["low"],"c":r["close"],"r":r["cumulative_return"]} for _,r in df.iterrows()])
+        latest = df.iloc[-1]
+        return """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>""" + title + """</title>
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; margin: 0; padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        h1 { text-align: center; color: #00d4ff; }
-        #chart { width: 100%; height: 700px; background: #16213e; border-radius: 10px; }
-        .stats { display: flex; justify-content: space-around; margin: 20px 0; }
-        .stat { background: #16213e; padding: 15px; border-radius: 8px; text-align: center; }
-        .stat-value { font-size: 24px; color: #00d4ff; }
-        .stat-label { font-size: 12px; color: #888; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>""" + title + """</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f0f23;color:#e0e0e0;font-family:Arial,sans-serif;padding:10px}
+h1{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.stat{background:#1a1a3e;padding:12px;border-radius:8px;text-align:center}
+.stat .v{font-size:22px;color:#00d4ff;font-weight:bold}
+.stat .l{font-size:11px;color:#888;margin-top:3px}
+#chart{background:#1a1a3e;border-radius:8px;width:100%;height:400px;position:relative;overflow:hidden}
+canvas{width:100%;height:100%}
+.info{text-align:center;margin-top:8px;font-size:11px;color:#666}
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>AI CHIP INDEX</h1>
-        <div class="stats">
-            <div class="stat"><div class="stat-value">""" + str(latest_close) + """</div><div class="stat-label">最新点位</div></div>
-            <div class="stat"><div class="stat-value">""" + str(cum_return) + """%</div><div class="stat-label">累计涨幅</div></div>
-            <div class="stat"><div class="stat-value">""" + str(num_days) + """</div><div class="stat-label">交易日</div></div>
-            <div class="stat"><div class="stat-value">""" + start_date + """</div><div class="stat-label">起始日期</div></div>
-        </div>
-        <div id="chart"></div>
-    </div>
-    <script>
-        var dates = """ + dates_json + """;
-        var opens = """ + opens_json + """;
-        var highs = """ + highs_json + """;
-        var lows = """ + lows_json + """;
-        var closes = """ + closes_json + """;
-        var senkouA = """ + senkouA_json + """;
-        var senkouB = """ + senkouB_json + """;
-        var ema5 = """ + ema5_json + """;
-        var ma50 = """ + ma50_json + """;
-        var ma100 = """ + ma100_json + """;
-        var sig = """ + sig_json + """;
-
-        var traces = [
-            {x: dates, close: closes, open: opens, high: highs, low: lows, type: 'candlestick', name: 'K线',
-              increasing: {line: {color: '#FF0000'}}, decreasing: {line: {color: '#00FF00'}}},
-            {x: dates, y: senkouA, mode: 'lines', name: '云A', line: {color: '#2F4F4F'}},
-            {x: dates, y: senkouB, mode: 'lines', name: '云B', line: {color: '#8B4513'}},
-            {x: dates, y: ema5, mode: 'lines', name: 'EMA5', line: {color: '#FFFFFF'}},
-            {x: dates, y: ma50, mode: 'lines', name: 'MA50', line: {color: '#00FF00'}},
-            {x: dates, y: ma100, mode: 'lines', name: 'MA100', line: {color: '#FF0000', width: 2}}
-        ];
-
-        sig.forEach(function(s) {
-            var nm = (s.type === 'buy') ? '金叉' : '死叉';
-            var sy = (s.type === 'buy') ? 'triangle-up' : 'triangle-down';
-            var cl = (s.type === 'buy') ? '#FF0000' : '#00FF00';
-            traces.push({x: [s.x], y: [s.y], mode: 'markers', type: 'scatter', name: nm,
-                marker: {symbol: sy, size: 15, color: cl}});
-        });
-
-        var layout = {
-            title: 'AI CHIP INDEX', plot_bgcolor: '#16213e', paper_bgcolor: '#16213e',
-            font: {color: '#eee'}, xaxis: {title: '日期', gridcolor: '#333', tickangle: -45},
-            yaxis: {title: '指数点位', gridcolor: '#333'}, legend: {bgcolor: 'rgba(0,0,0,0.5)'}
-        };
-
-        Plotly.newPlot('chart', traces, layout, {responsive: true, displayModeBar: true});
-    </script>
+<h1>""" + title + """</h1>
+<div class="stats">
+<div class="stat"><div class="v">""" + str(latest["index_value"]) + """</div><div class="l">最新点位</div></div>
+<div class="stat"><div class="v">""" + str(latest["cumulative_return"]) + """%</div><div class="l">累计涨幅</div></div>
+<div class="stat"><div class="v">""" + str(len(df)) + """</div><div class="l">交易日</div></div>
+<div class="stat"><div class="v">""" + df["date"].iloc[0] + """</div><div class="l">起始日期</div></div>
+</div>
+<div id="chart"><canvas id="cv"></canvas></div>
+<div class="info">成分股：中际旭创、新易盛、天孚通信、海光信息、寒武纪、龙芯中科、工业富联、浪潮信息、中科曙光、香农芯创、佰维存储、德明利、江波龙、兆易创新 | 等权重</div>
+<script>
+(function(){
+var data=""" + datas + """;
+var c=document.getElementById("cv");
+var p=c.getContext("2d");
+function resize(){
+  var rect=c.parentElement.getBoundingClientRect();
+  c.width=rect.width*window.devicePixelRatio||1;
+  c.height=rect.height*window.devicePixelRatio||1;
+  c.style.width=rect.width+"px";
+  c.style.height=rect.height+"px";
+  draw();
+}
+function draw(){
+  var W=c.width,H=c.height,dpr=window.devicePixelRatio||1;
+  p.clearRect(0,0,W,H);
+  if(data.length<2) return;
+  pad=60*dpr; pw=W-pad*2; ph=H-pad*2;
+  var vs=data.map(function(x){return x.v});
+  var minV=Math.min.apply(null,vs),maxV=Math.max.apply(null,vs),rangeV=maxV-minV||1;
+  var lastV=vs[vs.length-1];
+  p.strokeStyle="#333"; p.lineWidth=1*dpr;
+  p.beginPath(); p.moveTo(pad,pad); p.lineTo(pad,pad+ph); p.lineTo(pad+pw,pad+ph); p.stroke();
+  var ys=[minV,minV+rangeV*0.25,minV+rangeV*0.5,minV+rangeV*0.75,maxV];
+  p.fillStyle="#666"; p.font=Math.round(11*dpr)+"px Arial"; p.textAlign="right";
+  ys.forEach(function(y){
+    var yy=pad+ph-(y-minV)/rangeV*ph;
+    p.strokeStyle="#222"; p.beginPath(); p.moveTo(pad,yy); p.lineTo(pad+pw,yy); p.stroke();
+    p.fillStyle="#888"; p.fillText(Math.round(y),pad-5*dpr,yy+4*dpr);
+  });
+  var colors=["#ff4444","#00c853"];
+  p.lineWidth=2*dpr;
+  data.forEach(function(pt,i){
+    var x=pad+i/(data.length-1)*pw;
+    var y=pad+ph-(pt.v-minV)/rangeV*ph;
+    if(i==0){p.beginPath();p.moveTo(x,y)}else{p.lineTo(x,y)}
+  });
+  var grad=p.createLinearGradient(0,pad,0,pad+ph);
+  grad.addColorStop(0,"rgba(0,212,255,0.4)");
+  grad.addColorStop(1,"rgba(0,212,255,0.02)");
+  p.strokeStyle="#00d4ff"; p.stroke();
+  data.forEach(function(pt,i){
+    var x=pad+i/(data.length-1)*pw;
+    var y=pad+ph-(pt.v-minV)/rangeV*ph;
+    if(i==data.length-1){
+      p.beginPath(); p.arc(x,y,4*dpr,0,Math.PI*2); p.fillStyle="#00d4ff"; p.fill();
+      p.fillStyle="#fff"; p.textAlign="left"; p.font="bold "+(12*dpr)+"px Arial";
+      p.fillText(pt.v,x+8*dpr,y+4*dpr);
+    }
+  });
+}
+window.addEventListener("resize",resize);
+setTimeout(function(){
+  resize();
+  // 美化：鼠标移动显示值
+  var container=c.parentElement;
+  container.addEventListener("mousemove",function(e){
+    var rect=container.getBoundingClientRect();
+    var mx=e.clientX-rect.left,mw=rect.width;
+    var idx=Math.round((mx-pad/pw)*(data.length-1));
+    idx=Math.max(0,Math.min(data.length-1,idx));
+    if(rect.width==0)return;
+    var pt=data[idx];
+    c.style.cursor="pointer";
+    draw();
+    var x=pad+idx/(data.length-1)*pw;
+    var minV2=Math.min.apply(null,data.map(function(x){return x.v}));
+    var maxV2=Math.max.apply(null,data.map(function(x){return x.v}));
+    var rangeV2=maxV2-minV2||1;
+    var y=pad+ph-(pt.v-minV2)/rangeV2*ph;
+    p.strokeStyle="rgba(255,255,255,0.2)";
+    p.beginPath(); p.moveTo(x,pad); p.lineTo(x,pad+ph); p.stroke();
+    p.fillStyle="rgba(0,0,0,0.7)";
+    p.fillRect(x+8*dpr,y-20*dpr,160*dpr,50*dpr);
+    p.fillStyle="#fff"; p.font=(11*dpr)+"px Arial"; p.textAlign="left";
+    p.fillText("日期:"+pt.d,x+12*dpr,y-4*dpr);
+    p.fillText("指数:"+pt.v,x+12*dpr,y+12*dpr);
+    p.fillText("涨幅:"+pt.r+"%",x+12*dpr,y+28*dpr);
+  });
+  container.addEventListener("mouseleave",function(){draw();});
+},100);
+})();
+</script>
 </body>
 </html>"""
 
-        return html
-
-    def save_data(self, stocks_df, index_df):
+    def save(self, sdf, idf):
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        stocks_df.to_csv(self.output_dir / "AI_CHIP_INDEX_stocks.csv", index=False, encoding="utf-8-sig")
-        index_df.to_csv(self.output_dir / "AI_CHIP_INDEX_detail.csv", index=False, encoding="utf-8-sig")
-        index_df[["date", "index_value"]].to_csv(self.output_dir / "AI_CHIP_INDEX.csv", index=False, encoding="utf-8-sig")
-        title = self.config["output"].get("chart_title", "AI CHIP INDEX")
-        html = self.generate_kline_html(index_df, title)
-        with open(self.output_dir / "AI_CHIP_INDEX_kline.html", "w", encoding="utf-8") as f:
+        sdf.to_csv(self.output_dir/"AI_CHIP_INDEX_stocks.csv",index=False,encoding="utf-8-sig")
+        idf.to_csv(self.output_dir/"AI_CHIP_INDEX_detail.csv",index=False,encoding="utf-8-sig")
+        idf[["date","index_value"]].to_csv(self.output_dir/"AI_CHIP_INDEX.csv",index=False,encoding="utf-8-sig")
+        html = self.gen_html(idf)
+        with open(self.output_dir/"AI_CHIP_INDEX_kline.html","w",encoding="utf-8") as f:
             f.write(html)
-        print("Saved all files")
+        print("Saved OK")
 
-    def run_all(self):
-        stocks_df = self.fetch_data()
-        if stocks_df is None:
-            return
-        index_df = self.calculate_index(stocks_df)
-        if index_df is None:
-            return
-        self.save_data(stocks_df, index_df)
-        print("Done! Latest: {:.2f}, Return: {:.2f}%".format(index_df['index_value'].iloc[-1], index_df['cumulative_return'].iloc[-1]))
+    def run(self):
+        s = self.fetch_data()
+        if s is None: print("No data"); return
+        i = self.calculate_index(s)
+        if i is None: print("Calc failed"); return
+        self.save(s,i)
+        print("Done! Latest: {:.2f}, Return: {:.2f}%".format(i["index_value"].iloc[-1],i["cumulative_return"].iloc[-1]))
 
-
-if __name__ == "__main__":
+if __name__=="__main__":
     g = IndexGenerator()
-    if len(sys.argv) > 1 and sys.argv[1] == "chart":
-        s = pd.read_csv(g.output_dir / "AI_CHIP_INDEX_stocks.csv", encoding="utf-8-sig")
-        g.save_data(s, g.calculate_index(s))
+    if len(sys.argv)>1 and sys.argv[1]=="chart":
+        s = pd.read_csv(g.output_dir/"AI_CHIP_INDEX_stocks.csv", encoding="utf-8-sig")
+        g.save(s, g.calculate_index(s))
     else:
-        g.run_all()
+        g.run()

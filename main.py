@@ -177,12 +177,41 @@ class IndexGenerator:
             g[c] = (g[c] * scale).round(2)
         return g.rename(columns={"ds": "date"})
 
-    def gen_html(self, df, title="AI CHIP INDEX"):
+    def calc_weekly_index(self, sdf):
+        """按周计算 OHLC：周开=周一开盘，周高=周最高，周低=周最低，周收=周五收盘"""
+        d = sdf.copy()
+        d["date"] = pd.to_datetime(d["date"])
+        d = d.sort_values(["code", "date"])
+        # 周分组：按 ISO 周（周一开始）
+        d["week"] = d["date"].dt.isocalendar().year.astype(str) + "-W" + d["date"].dt.isocalendar().week.astype(str).str.zfill(2)
+        g = d.groupby("week").agg(
+            {"open": "first", "high": "max",
+             "low": "min", "close": "last"}
+        ).reset_index()
+        if len(g) == 0:
+            return None
+        bv = self.index_config["base_value"]
+        first_close = g["close"].iloc[0]
+        # 需要日期映射：取每周第一个交易日日期
+        week_dates = d.groupby("week")["date"].first().reset_index(name="_dt")
+        g = g.merge(week_dates, on="week", how="left")
+        g["date"] = g["_dt"].dt.strftime("%Y-%m-%d")
+        g["index_value"] = (g["close"] / first_close * bv).round(2)
+        g["cumulative_return"] = ((g["index_value"] / bv - 1) * 100).round(2)
+        g.loc[0, "cumulative_return"] = 0.0
+        scale = bv / first_close
+        for c in ["open", "high", "low", "close"]:
+            g[c] = (g[c] * scale).round(2)
+        return g[["date", "open", "high", "low", "close", "index_value", "cumulative_return"]]
+
+    def gen_html(self, df, wdf, title="AI CHIP INDEX"):
         cl = df["close"].tolist()
         hi = df["high"].tolist()
         lo = df["low"].tolist()
         ind = calc_indicators(cl, hi, lo)
-        return gen_kline_html(df, ind, title, self.stocks)
+        # 周线指标
+        w_ind = calc_indicators(wdf["close"].tolist(), wdf["high"].tolist(), wdf["low"].tolist()) if wdf is not None else None
+        return gen_kline_html(df, ind, title, self.stocks, wdf=wdf, w_ind=w_ind)
 
     def save(self, sdf, idf):
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -195,15 +224,16 @@ class IndexGenerator:
         idf[["date", "index_value"]].to_csv(
             self.output_dir / "AI_CHIP_INDEX.csv",
             index=False, encoding="utf-8-sig")
-        html = self.gen_html(idf)
+        # 计算周线
+        wdf = self.calc_weekly_index(sdf)
+        html = self.gen_html(idf, wdf)
         with open(
             self.output_dir / "AI_CHIP_INDEX_kline.html",
             "w", encoding="utf-8") as f:
             f.write(html)
-        # GitHub Pages 需要根目录的 index.html
         with open("index.htm", "w", encoding="utf-8") as f:
             f.write(html)
-        print("Saved OK (root index.html too)")
+        print("Saved OK (root index.htm too)")
 
     def run(self):
         s = self.fetch_data()
@@ -226,6 +256,7 @@ if __name__ == "__main__":
         s = pd.read_csv(
             g.output_dir / "AI_CHIP_INDEX_stocks.csv",
             encoding="utf-8-sig")
-        g.save(s, g.calc_index(s))
+        idf = g.calc_index(s)
+        g.save(s, idf)
     else:
         g.run()

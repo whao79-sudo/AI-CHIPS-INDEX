@@ -28,6 +28,8 @@ def gen_kline_html(df, ind, title, stocks_list):
     data_json = json.dumps(data)
     lv = int(lt["index_value"])
     cr = round(lt["cumulative_return"], 2)
+    last_date = ds[-1]
+    last_close = round(cl[-1], 1)
 
     html = f'''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -43,7 +45,7 @@ h1{{text-align:center;color:#00d4ff;font-size:16px;margin:6px 0}}
 canvas{{display:block;width:100%;height:auto;touch-action:none}}
 .leg{{text-align:center;margin:4px 0;font-size:10px;line-height:1.5}}
 .leg span{{display:inline-block;padding:0 3px;margin:0 1px;border-radius:2px;white-space:nowrap}}
-.info{{text-align:center;margin:4px 0;font-size:9px;color:#555;line-height:1.4}}
+.info{{text-align:center;margin:4px 0;font-size:12px;color:#aaa;line-height:1.6}}
 @media(min-width:768px){{
   body{{padding:15px 30px}}
   h1{{font-size:24px}}
@@ -300,7 +302,7 @@ resize();
 
 }})();
 </script>
-<div class="info">成分股（等权重）：{sn} | {lv}({cr}%) | Cloud+Ichimoku+Bollinger | {datetime.now().strftime("%Y-%m-%d")}</div>
+<div class="info">📅 {last_date} 收盘 <b style="color:#00d4ff;font-size:14px">{last_close}</b> | 指数 {lv}({cr}%) | {sn}</div>
 </body>
 </html>'''
     return html

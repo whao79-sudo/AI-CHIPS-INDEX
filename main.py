@@ -195,11 +195,15 @@ class IndexGenerator:
         idf[["date", "index_value"]].to_csv(
             self.output_dir / "AI_CHIP_INDEX.csv",
             index=False, encoding="utf-8-sig")
+        html = self.gen_html(idf)
         with open(
             self.output_dir / "AI_CHIP_INDEX_kline.html",
             "w", encoding="utf-8") as f:
-            f.write(self.gen_html(idf))
-        print("Saved OK")
+            f.write(html)
+        # GitHub Pages 需要根目录的 index.html
+        with open("index.html", "w", encoding="utf-8") as f:
+            f.write(html)
+        print("Saved OK (root index.html too)")
 
     def run(self):
         s = self.fetch_data()

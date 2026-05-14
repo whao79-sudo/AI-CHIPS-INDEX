@@ -5,7 +5,6 @@ venv/
 .idea/
 output/
 *.csv
-*.html
 *.png
 *.log
 .DS_Store

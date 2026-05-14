@@ -8,13 +8,13 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 import importlib
+import baostock as bs
 
 from indicators import calc_indicators
 from chart import gen_kline_html
 
 HIST_CSV = "stocks_history.csv"
-
-HAS_BAOSTOCK = importlib.util.find_spec("baostock") is not None
+HAS_BAOSTOCK = True
 if HAS_BAOSTOCK:
 import baostock as bs
 

@@ -82,7 +82,7 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=45, scale=1, offset=0;
+var pd=45, scale=1, offset=0, isInit=true;
 var INITIAL_VIS = 60; // 初始显示最近60根K线
 
 function resize(){{
@@ -94,9 +94,12 @@ function resize(){{
   c.style.width = W + "px";
   c.style.height = H + "px";
   ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
-  // 初始缩放：显示最近 INITIAL_VIS 根
-  scale = n / INITIAL_VIS;
-  offset = n - INITIAL_VIS;
+  // 仅在首次加载时设置初始缩放
+  if(isInit){{
+    scale = n / INITIAL_VIS;
+    offset = n - INITIAL_VIS;
+    isInit = false;
+  }}
   draw();
 }}
 
@@ -109,7 +112,9 @@ function draw(){{
   var pw = W - 2*pd;
   var ph = H - 2*pd;
   var visN = Math.max(10, Math.floor(n / scale));
-  var i0 = Math.floor(clamp(offset, 0, n - visN));
+  var i0 = Math.floor(offset);
+  if(i0 < 0) i0 = 0;
+  if(i0 > n - visN) i0 = n - visN;
   var i1 = Math.min(i0 + visN, n);
 
   var mn = 1e9, mx = -1e9;
@@ -259,7 +264,6 @@ c.addEventListener("touchmove", function(e){{
   if(t.length==1 && isDragging){{
     var dx = (t[0].clientX - dragStartX) / W;
     offset = dragStartOff - dx * n / scale;
-    offset = clamp(offset, 0, n - n/scale);
     draw();
   }} else if(t.length==2){{
     var dist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
@@ -271,7 +275,8 @@ c.addEventListener("touchmove", function(e){{
     s = scale / oldScale;
     var centerIdx = offset + cxRatio * n / oldScale;
     offset = centerIdx - cxRatio * n / scale;
-    offset = clamp(offset, 0, n - n/scale);
+    if(offset < 0) offset = 0;
+    if(offset > n - n/scale) offset = n - n/scale;
     lastDist = dist;
     draw();
   }}
@@ -288,7 +293,8 @@ c.addEventListener("wheel", function(e){{
   var s = scale / oldScale;
   var centerIdx = offset + cx * n / oldScale;
   offset = centerIdx - cx * n / scale;
-  offset = clamp(offset, 0, n - n/scale);
+  if(offset < 0) offset = 0;
+  if(offset > n - n/scale) offset = n - n/scale;
   draw();
 }}, {{passive:false}});
 
@@ -299,7 +305,8 @@ window.addEventListener("mousemove", function(e){{
   if(!isDragging) return;
   var dx = (e.clientX - dragStartX) / W;
   offset = dragStartOff - dx * n / scale;
-  offset = clamp(offset, 0, n - n/scale);
+  if(offset < 0) offset = 0;
+  if(offset > n - n/scale) offset = n - n/scale;
   draw();
 }});
 window.addEventListener("mouseup", function(){{ isDragging=false; }});

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Canvas K线图渲染 - 初始缩放显示最近60根K线，支持缩放平移"""
+"""Canvas K线图渲染 - 支持日线/周线切换"""
 from datetime import datetime
 import json
 
 
-def gen_kline_html(df, ind, title, stocks_list):
+def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None):
     ds = df["date"].tolist()
     op = df["open"].tolist()
     hi = df["high"].tolist()
@@ -25,7 +25,27 @@ def gen_kline_html(df, ind, title, stocks_list):
         "ma100": ind["ma100"], "ub2": ind["ub2"], "lb2": ind["lb2"],
         "dif": ind["dif"], "dea": ind["dea"], "macd": ind["macd"],
     }
+
+    # 周线数据
+    w_data = None
+    if wdf is not None and w_ind is not None:
+        w_data = {
+            "ds": wdf["date"].tolist(),
+            "op": wdf["open"].tolist(),
+            "hi": wdf["high"].tolist(),
+            "lo": wdf["low"].tolist(),
+            "cl": wdf["close"].tolist(),
+            "sa_": w_ind["sa_"], "sb_": w_ind["sb_"],
+            "tenkan": w_ind["tenkan"], "kijun": w_ind["kijun"],
+            "boll": w_ind["boll"], "ub": w_ind["ub"], "lb": w_ind["lb"],
+            "ma300": w_ind["ma300"], "ub1": w_ind["ub1"], "lb1": w_ind["lb1"],
+            "ema5": w_ind["ema5"], "ma50": w_ind["ma50"],
+            "ma100": w_ind["ma100"], "ub2": w_ind["ub2"], "lb2": w_ind["lb2"],
+            "dif": w_ind["dif"], "dea": w_ind["dea"], "macd": w_ind["macd"],
+        }
+
     data_json = json.dumps(data)
+    w_data_json = json.dumps(w_data) if w_data else "null"
     lv = int(lt["index_value"])
     cr = round(lt["cumulative_return"], 2)
     last_date = ds[-1]
@@ -50,6 +70,9 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 .leg span{{display:inline-block;padding:0 3px;margin:0 1px;border-radius:2px;white-space:nowrap}}
 .info{{text-align:center;margin:6px 0;font-size:13px;color:#aaa;line-height:1.6}}
 .info b{{color:#00d4ff;font-size:15px}}
+.pb{{text-align:center;margin:3px 0;line-height:1}}
+.pbtn{{display:inline-block;padding:2px 10px;margin:0 2px;font-size:11px;border:1px solid #555;border-radius:4px;color:#888;background:transparent;cursor:pointer}}
+.pbtn.act{{border-color:#00d4ff;color:#00d4ff;background:rgba(0,212,255,0.1)}}
 @media(min-width:768px){{
   body{{padding:15px 30px}}
   h1{{font-size:24px}}
@@ -58,6 +81,10 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 </head>
 <body>
 <h1>{title}</h1>
+<div class="pb">
+<span class="pbtn act" id="pbtn_day" onclick="switchPeriod(false)">日线</span>
+<span class="pbtn" id="pbtn_week" onclick="switchPeriod(true)">周线</span>
+</div>
 <div class="leg">
 <span style="border-left:3px solid #ff6b35;color:#ff6b35">先行A</span>
 <span style="border-left:3px solid #2a6f9c;color:#2a6f9c">先行B</span>
@@ -79,8 +106,25 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 </div>
 <script>
 (function(){{
-var D = {data_json};
-var n = D.ds.length;
+var D_DAY = {data_json};
+var D_WEEK = {w_data_json};
+var isWeek = false;
+var D;
+
+function getData(){{ return isWeek ? D_WEEK : D_DAY; }}
+
+function switchPeriod(week){{
+  isWeek = week;
+  D = getData();
+  // 切换后reset视角
+  document.getElementById("pbtn_day").className = week ? "pbtn" : "pbtn act";
+  document.getElementById("pbtn_week").className = week ? "pbtn act" : "pbtn";
+  var n = D.ds.length;
+  scale = n / 60;
+  offset = n - 60;
+  isInit = true; // 触发一次初始缩放
+  resize();
+}}
 
 var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
@@ -91,6 +135,8 @@ var MAIN_RATIO = 0.7; // 主图占70%，MACD占30%
 var INITIAL_VIS = 60;
 
 function resize(){{
+  D = getData();
+  var n = D.ds.length;
   var r = c.parentElement.getBoundingClientRect();
   W = r.width;
   H = Math.max(350, Math.min(W * 0.7, window.innerHeight * 0.85));
@@ -110,6 +156,8 @@ function resize(){{
 function clamp(v,lo,hi){{return v<lo?lo:v>hi?hi:v}}
 
 function draw(){{
+  D = getData();
+  var n = D.ds.length;
   ctx.clearRect(0,0,W,H);
   if(n<2) return;
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Chip Index Generator - 纯内嵌折线图版（无需CDN）
+AI Chip Index - Chart.js K线图版
 """
 import pandas as pd, numpy as np, requests, yaml, os, sys, json
 from datetime import datetime
@@ -74,14 +74,45 @@ class IndexGenerator:
         return d.rename(columns={"ds":"date"})
 
     def gen_html(self, df, title="AI CHIP INDEX"):
-        datas = json.dumps([{"d":r["date"],"v":r["index_value"],"o":r["open"],"h":r["high"],"l":r["low"],"c":r["close"],"r":r["cumulative_return"]} for _,r in df.iterrows()])
+        def ema(data, period):
+            result = []; m = 2/(period+1); ema_val = data[0]
+            for i in range(len(data)):
+                if i < period-1: result.append(None)
+                elif i == period-1:
+                    ema_val = sum(data[:period])/period; result.append(round(ema_val,2))
+                else:
+                    ema_val = (data[i]-ema_val)*m+ema_val; result.append(round(ema_val,2))
+            return result
+        def sma(data, period):
+            result = []
+            for i in range(len(data)):
+                if i < period-1: result.append(None)
+                else: result.append(round(sum(data[i-period+1:i+1])/period,2))
+            return result
+
+        closes = [float(x) for x in df["close"]]
+        dates = [str(x) for x in df["date"]]
+        opens = [float(x) for x in df["open"]]
+        highs = [float(x) for x in df["high"]]
+        lows = [float(x) for x in df["low"]]
+        values = [float(x) for x in df["index_value"]]
+        cret = [float(x) for x in df["cumulative_return"]]
+
+        c5 = ema(closes,5)
+        c50 = sma(closes,50)
+        c100 = sma(closes,100)
         latest = df.iloc[-1]
+
+        dj = json.dumps({"dates":dates,"o":opens,"h":highs,"l":lows,"c":closes,"v":values,"r":cret,"ma5":c5,"ma50":c50,"ma100":c100})
+
         return """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>""" + title + """</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.0/dist/chartjs-chart-financial.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0f0f23;color:#e0e0e0;font-family:Arial,sans-serif;padding:10px}
@@ -90,8 +121,8 @@ h1{text-align:center;color:#00d4ff;font-size:20px;margin:10px 0}
 .stat{background:#1a1a3e;padding:12px;border-radius:8px;text-align:center}
 .stat .v{font-size:22px;color:#00d4ff;font-weight:bold}
 .stat .l{font-size:11px;color:#888;margin-top:3px}
-#chart{background:#1a1a3e;border-radius:8px;width:100%;height:400px;position:relative;overflow:hidden}
-canvas{width:100%;height:100%}
+#chart-wrap{background:#1a1a3e;border-radius:8px;padding:10px;margin-bottom:10px}
+#chart{width:100%;height:500px}
 .info{text-align:center;margin-top:8px;font-size:11px;color:#666}
 </style>
 </head>
@@ -103,90 +134,40 @@ canvas{width:100%;height:100%}
 <div class="stat"><div class="v">""" + str(len(df)) + """</div><div class="l">交易日</div></div>
 <div class="stat"><div class="v">""" + df["date"].iloc[0] + """</div><div class="l">起始日期</div></div>
 </div>
-<div id="chart"><canvas id="cv"></canvas></div>
-<div class="info">成分股：中际旭创、新易盛、天孚通信、海光信息、寒武纪、龙芯中科、工业富联、浪潮信息、中科曙光、香农芯创、佰维存储、德明利、江波龙、兆易创新 | 等权重</div>
+<div id="chart-wrap"><div id="chart"><canvas id="cv"></canvas></div></div>
+<div class="info">成分股：中际旭创、新易盛、天孚通信、海光信息、寒武纪、龙芯中科、工业富联、浪潮信息、中科曙光、香农芯创、佰维存储、德明利、江波龙、兆易创新 | 等权重 | """ + datetime.now().strftime("%Y-%m-%d %H:%M") + """</div>
 <script>
-(function(){
-var data=""" + datas + """;
-var c=document.getElementById("cv");
-var p=c.getContext("2d");
-function resize(){
-  var rect=c.parentElement.getBoundingClientRect();
-  c.width=rect.width*window.devicePixelRatio||1;
-  c.height=rect.height*window.devicePixelRatio||1;
-  c.style.width=rect.width+"px";
-  c.style.height=rect.height+"px";
-  draw();
+var DATA=""" + dj + """;
+var d=DATA.dates.map(function(x,i){return{x:x,o:DATA.o[i],h:DATA.h[i],l:DATA.l[i],c:DATA.c[i]}});
+var ctx=document.getElementById("cv").getContext("2d");
+var chart=new Chart(ctx,{
+type:"candlestick",
+data:{
+  datasets:[
+    {label:"K线",data:d,color:{up:"#ff4444",down:"#00c853",unchanged:"#888"},borderColor:{up:"#ff4444",down:"#00c853",unchanged:"#888"},bar:{_data:null}},
+  ]
+},
+options:{
+  responsive:true,maintainAspectRatio:false,
+  parsing:{xAxisKey:"x",yAxisKey:"c"},
+  scales:{
+    x:{type:"time",time:{parser:"yyyy-MM-dd",tooltipFormat:"yyyy-MM-dd",unit:"month"},ticks:{color:"#888"},grid:{color:"#222"},adapters:{date:{}}},
+    y:{beginAtZero:false,ticks:{color:"#888"},grid:{color:"#222"}}
+  },
+  plugins:{
+    legend:{labels:{color:"#ddd"}},
+    tooltip:{enabled:true,mode:"index",intersect:false}
+  }
 }
-function draw(){
-  var W=c.width,H=c.height,dpr=window.devicePixelRatio||1;
-  p.clearRect(0,0,W,H);
-  if(data.length<2) return;
-  pad=60*dpr; pw=W-pad*2; ph=H-pad*2;
-  var vs=data.map(function(x){return x.v});
-  var minV=Math.min.apply(null,vs),maxV=Math.max.apply(null,vs),rangeV=maxV-minV||1;
-  var lastV=vs[vs.length-1];
-  p.strokeStyle="#333"; p.lineWidth=1*dpr;
-  p.beginPath(); p.moveTo(pad,pad); p.lineTo(pad,pad+ph); p.lineTo(pad+pw,pad+ph); p.stroke();
-  var ys=[minV,minV+rangeV*0.25,minV+rangeV*0.5,minV+rangeV*0.75,maxV];
-  p.fillStyle="#666"; p.font=Math.round(11*dpr)+"px Arial"; p.textAlign="right";
-  ys.forEach(function(y){
-    var yy=pad+ph-(y-minV)/rangeV*ph;
-    p.strokeStyle="#222"; p.beginPath(); p.moveTo(pad,yy); p.lineTo(pad+pw,yy); p.stroke();
-    p.fillStyle="#888"; p.fillText(Math.round(y),pad-5*dpr,yy+4*dpr);
-  });
-  var colors=["#ff4444","#00c853"];
-  p.lineWidth=2*dpr;
-  data.forEach(function(pt,i){
-    var x=pad+i/(data.length-1)*pw;
-    var y=pad+ph-(pt.v-minV)/rangeV*ph;
-    if(i==0){p.beginPath();p.moveTo(x,y)}else{p.lineTo(x,y)}
-  });
-  var grad=p.createLinearGradient(0,pad,0,pad+ph);
-  grad.addColorStop(0,"rgba(0,212,255,0.4)");
-  grad.addColorStop(1,"rgba(0,212,255,0.02)");
-  p.strokeStyle="#00d4ff"; p.stroke();
-  data.forEach(function(pt,i){
-    var x=pad+i/(data.length-1)*pw;
-    var y=pad+ph-(pt.v-minV)/rangeV*ph;
-    if(i==data.length-1){
-      p.beginPath(); p.arc(x,y,4*dpr,0,Math.PI*2); p.fillStyle="#00d4ff"; p.fill();
-      p.fillStyle="#fff"; p.textAlign="left"; p.font="bold "+(12*dpr)+"px Arial";
-      p.fillText(pt.v,x+8*dpr,y+4*dpr);
-    }
-  });
-}
-window.addEventListener("resize",resize);
+});
+// 等 chartjs-chart-financial 注册后加均线
 setTimeout(function(){
-  resize();
-  // 美化：鼠标移动显示值
-  var container=c.parentElement;
-  container.addEventListener("mousemove",function(e){
-    var rect=container.getBoundingClientRect();
-    var mx=e.clientX-rect.left,mw=rect.width;
-    var idx=Math.round((mx-pad/pw)*(data.length-1));
-    idx=Math.max(0,Math.min(data.length-1,idx));
-    if(rect.width==0)return;
-    var pt=data[idx];
-    c.style.cursor="pointer";
-    draw();
-    var x=pad+idx/(data.length-1)*pw;
-    var minV2=Math.min.apply(null,data.map(function(x){return x.v}));
-    var maxV2=Math.max.apply(null,data.map(function(x){return x.v}));
-    var rangeV2=maxV2-minV2||1;
-    var y=pad+ph-(pt.v-minV2)/rangeV2*ph;
-    p.strokeStyle="rgba(255,255,255,0.2)";
-    p.beginPath(); p.moveTo(x,pad); p.lineTo(x,pad+ph); p.stroke();
-    p.fillStyle="rgba(0,0,0,0.7)";
-    p.fillRect(x+8*dpr,y-20*dpr,160*dpr,50*dpr);
-    p.fillStyle="#fff"; p.font=(11*dpr)+"px Arial"; p.textAlign="left";
-    p.fillText("日期:"+pt.d,x+12*dpr,y-4*dpr);
-    p.fillText("指数:"+pt.v,x+12*dpr,y+12*dpr);
-    p.fillText("涨幅:"+pt.r+"%",x+12*dpr,y+28*dpr);
-  });
-  container.addEventListener("mouseleave",function(){draw();});
-},100);
-})();
+  var cData=chart.data;
+  cData.datasets.push({label:"EMA5",data:DATA.dates.map(function(x,i){return{x:x,y:DATA.ma5[i]}}),type:"line",borderColor:"#fff",pointRadius:0,borderWidth:1.5,fill:false});
+  cData.datasets.push({label:"MA50",data:DATA.dates.map(function(x,i){return{x:x,y:DATA.ma50[i]}}),type:"line",borderColor:"#00ff00",pointRadius:0,borderWidth:1.5,fill:false});
+  cData.datasets.push({label:"MA100",data:DATA.dates.map(function(x,i){return{x:x,y:DATA.ma100[i]}}),type:"line",borderColor:"#ff4444",pointRadius:0,borderWidth:2,fill:false});
+  chart.update();
+},500);
 </script>
 </body>
 </html>"""

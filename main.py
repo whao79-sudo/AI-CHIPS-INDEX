@@ -10,10 +10,10 @@ from pathlib import Path
 HIST_CSV = "stocks_history.csv"
 
 try:
-import baostock as bs
-HAS_BAOSTOCK = True
+  import baostock as bs
+  HAS_BAOSTOCK = True
 except:
-HAS_BAOSTOCK = False
+  HAS_BAOSTOCK = False
 
 
 def fetch_baostock(code, start_date, end_date):

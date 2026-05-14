@@ -39,7 +39,7 @@ def gen_kline_html(df, ind, title, stocks_list):
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{background:#050518;color:#ddd;font-family:Arial,sans-serif;padding:5px;overflow:hidden;touch-action:none}}
 h1{{text-align:center;color:#00d4ff;font-size:16px;margin:6px 0}}
-.cwrap{{background:#0d0d28;border-radius:8px;padding:3px;width:100%}}
+.cwrap{{background:#050518;border-radius:0;padding:0;width:100%}}
 canvas{{display:block;width:100%;height:auto;touch-action:none}}
 .leg{{text-align:center;margin:4px 0;font-size:10px;line-height:1.5}}
 .leg span{{display:inline-block;padding:0 3px;margin:0 1px;border-radius:2px;white-space:nowrap}}

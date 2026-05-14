@@ -150,7 +150,7 @@ var periodNames = ["day", "2day", "week"];
 var periodLabels = ["dayInfo", "d2Info", "weekInfo"];
 var periodBtns = ["pbtn_day", "pbtn_2day", "pbtn_week"];
 var curPeriod = 0;
-var D;
+var D = D_DAY;
 
 function getData(){{ return D; }}
 

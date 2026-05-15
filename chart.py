@@ -137,7 +137,7 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 <span style="border-left:3px solid #ffd700;color:#ffd700">DEA</span>
 <span style="color:#f44">MACD+</span>
 <span style="color:#00c853">MACD-</span>
-<span style="border-left:3px solid #ff6600;color:#ff6600">量</span>
+<span style="border-left:3px solid #ff6600;color:#ff6600">量(小波)</span>
 <span style="color:#ff4444">MACD>0%</span>
 </div>
 <div class="cwrap">

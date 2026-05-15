@@ -150,6 +150,8 @@ var periodBtns = ["pbtn_day", "pbtn_2day", "pbtn_week"];
 var curPeriod = 0;
 var D = D_DAY;
 
+function getData(){{ return allData[curPeriod]; }}
+
 function switchPeriod(idx){{
   if(!allData[idx]) return;
   curPeriod = idx;

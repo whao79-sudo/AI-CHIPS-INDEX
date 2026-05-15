@@ -163,7 +163,8 @@ class IndexGenerator:
         d = d.sort_values(["code", "date"])
         g = d.groupby(d["date"].dt.strftime("%Y-%m-%d")).agg(
             {"open": "mean", "high": "mean",
-             "low": "mean", "close": "mean"}
+             "low": "mean", "close": "mean",
+             "volume": "sum"}
         ).reset_index().rename(columns={"date": "ds"})
         if len(g) == 0:
             return None
@@ -178,7 +179,6 @@ class IndexGenerator:
         return g.rename(columns={"ds": "date"})
 
     def calc_weekly_index(self, sdf):
-        """按周计算 OHLC：用日线指数结果按周聚合（先指数后周级）"""
         df = self.calc_index(sdf)
         if df is None or len(df) < 2:
             return None
@@ -187,37 +187,39 @@ class IndexGenerator:
                      df["date"].dt.isocalendar().week.astype(str).str.zfill(2)
         g = df.groupby("week", sort=True).agg(
             {"open": "first", "high": "max",
-             "low": "min", "close": "last"}
+             "low": "min", "close": "last",
+             "volume": "sum"}
         ).reset_index()
         week_dates = df.groupby("week")["date"].first().reset_index(name="_dt")
         g = g.merge(week_dates, on="week", how="left")
         g["date"] = g["_dt"].dt.strftime("%Y-%m-%d")
-        return g[["date", "open", "high", "low", "close"]]
+        return g[["date", "open", "high", "low", "close", "volume"]]
 
     def calc_2day_index(self, sdf):
-        """按两日计算 OHLC：每2个连续交易日为一组"""
         df = self.calc_index(sdf)
         if df is None or len(df) < 2:
             return None
         df["date"] = pd.to_datetime(df["date"])
-        df["_pair"] = df.index // 2  # 0,0,1,1,2,2...
+        df["_pair"] = df.index // 2
         g = df.groupby("_pair", sort=True).agg(
             {"open": "first", "high": "max",
-             "low": "min", "close": "last"}
+             "low": "min", "close": "last",
+             "volume": "sum"}
         ).reset_index()
         pair_dates = df.groupby("_pair")["date"].first().reset_index(name="_dt")
         g = g.merge(pair_dates, on="_pair", how="left")
         g["date"] = g["_dt"].dt.strftime("%Y-%m-%d")
-        return g[["date", "open", "high", "low", "close"]]
+        return g[["date", "open", "high", "low", "close", "volume"]]
 
     def gen_html(self, df, wdf, d2df, title="AI CHIP INDEX"):
         cl = df["close"].tolist()
         hi = df["high"].tolist()
         lo = df["low"].tolist()
+        vo = df["volume"].tolist()
         ind = calc_indicators(cl, hi, lo)
         w_ind = calc_indicators(wdf["close"].tolist(), wdf["high"].tolist(), wdf["low"].tolist()) if wdf is not None else None
         d2_ind = calc_indicators(d2df["close"].tolist(), d2df["high"].tolist(), d2df["low"].tolist()) if d2df is not None else None
-        return gen_kline_html(df, ind, title, self.stocks, wdf=wdf, w_ind=w_ind, d2df=d2df, d2_ind=d2_ind)
+        return gen_kline_html(df, ind, title, self.stocks, vo, wdf=wdf, w_ind=w_ind, d2df=d2df, d2_ind=d2_ind)
 
     def save(self, sdf, idf):
         self.output_dir.mkdir(parents=True, exist_ok=True)

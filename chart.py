@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Canvas K线图渲染 - 支持日线/周线切换"""
+"""Canvas K线图渲染 - 支持日线/两日/周线切换 + 成交量"""
 from datetime import datetime
 import json
 
 
-def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None, d2df=None, d2_ind=None):
+def gen_kline_html(df, ind, title, stocks_list, vo, wdf=None, w_ind=None, d2df=None, d2_ind=None):
     ds = df["date"].tolist()
     op = df["open"].tolist()
     hi = df["high"].tolist()
@@ -16,7 +16,7 @@ def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None, d2df=None,
     sn = "、".join([s["name"] for s in stocks_list])
 
     data = {
-        "ds": ds, "op": op, "hi": hi, "lo": lo, "cl": cl,
+        "ds": ds, "op": op, "hi": hi, "lo": lo, "cl": cl, "vo": vo,
         "sa_": ind["sa_"], "sb_": ind["sb_"],
         "tenkan": ind["tenkan"], "kijun": ind["kijun"],
         "boll": ind["boll"], "ub": ind["ub"], "lb": ind["lb"],
@@ -29,12 +29,11 @@ def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None, d2df=None,
     # 周线数据
     w_data = None
     if wdf is not None and w_ind is not None:
+        wv = wdf["volume"].tolist()
         w_data = {
             "ds": wdf["date"].tolist(),
-            "op": wdf["open"].tolist(),
-            "hi": wdf["high"].tolist(),
-            "lo": wdf["low"].tolist(),
-            "cl": wdf["close"].tolist(),
+            "op": wdf["open"].tolist(), "hi": wdf["high"].tolist(),
+            "lo": wdf["low"].tolist(), "cl": wdf["close"].tolist(), "vo": wv,
             "sa_": w_ind["sa_"], "sb_": w_ind["sb_"],
             "tenkan": w_ind["tenkan"], "kijun": w_ind["kijun"],
             "boll": w_ind["boll"], "ub": w_ind["ub"], "lb": w_ind["lb"],
@@ -47,12 +46,11 @@ def gen_kline_html(df, ind, title, stocks_list, wdf=None, w_ind=None, d2df=None,
     # 两日线数据
     d2_data = None
     if d2df is not None and d2_ind is not None:
+        d2v = d2df["volume"].tolist()
         d2_data = {
             "ds": d2df["date"].tolist(),
-            "op": d2df["open"].tolist(),
-            "hi": d2df["high"].tolist(),
-            "lo": d2df["low"].tolist(),
-            "cl": d2df["close"].tolist(),
+            "op": d2df["open"].tolist(), "hi": d2df["high"].tolist(),
+            "lo": d2df["low"].tolist(), "cl": d2df["close"].tolist(), "vo": d2v,
             "sa_": d2_ind["sa_"], "sb_": d2_ind["sb_"],
             "tenkan": d2_ind["tenkan"], "kijun": d2_ind["kijun"],
             "boll": d2_ind["boll"], "ub": d2_ind["ub"], "lb": d2_ind["lb"],
@@ -136,6 +134,7 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 <span style="border-left:3px solid #ffd700;color:#ffd700">DEA</span>
 <span style="color:#f44">MACD+</span>
 <span style="color:#00c853">MACD-</span>
+<span style="border-left:3px solid #ff6600;color:#ff6600">量</span>
 </div>
 <div class="cwrap">
 <canvas id="kc"></canvas>
@@ -146,16 +145,13 @@ var D_DAY = {data_json};
 var D_2DAY = {d2_data_json};
 var D_WEEK = {w_data_json};
 var allData = [D_DAY, D_2DAY, D_WEEK];
-var periodNames = ["day", "2day", "week"];
 var periodLabels = ["dayInfo", "d2Info", "weekInfo"];
 var periodBtns = ["pbtn_day", "pbtn_2day", "pbtn_week"];
 var curPeriod = 0;
 var D = D_DAY;
 
-function getData(){{ return D; }}
-
 function switchPeriod(idx){{
-  if(!allData[idx]) return; // data not available (null)
+  if(!allData[idx]) return;
   curPeriod = idx;
   D = allData[idx];
   for(var i=0;i<3;i++){{
@@ -167,7 +163,6 @@ function switchPeriod(idx){{
   offset = n - 60;
   draw();
 }}
-// 挂到全局以便 onclick 调用
 window.switchPeriod = switchPeriod;
 
 var c = document.getElementById("kc");
@@ -175,8 +170,11 @@ var ctx = c.getContext("2d");
 
 var W, H;
 var pd=25, pd_b=35, scale=1, offset=0, isInit=true, n=0;
-var MAIN_RATIO = 0.68; // 主图68%，MACD副图+日期区32%
+var PIN1 = 0.55; // 主图 55%
+var PIN2 = 0.22; // MACD 22%
+var PIN3 = 0.23; // 量  23%
 var INITIAL_VIS = 60;
+var GAP = 12;    // 子图间距
 
 function resize(){{
   D = getData();
@@ -206,10 +204,15 @@ function draw(){{
   if(n<2) return;
 
   var pw = W - pd - pd;
-  var ph1 = (H - pd - pd_b) * MAIN_RATIO;  // 主图
-  var ph2 = (H - pd - pd_b) * (1 - MAIN_RATIO) - 30; // MACD副图（中间30px分隔）
-  var gapY = pd + ph1 + 15; // 分隔线位置
-  var macdY0 = gapY + 15;   // MACD绘图区起始
+  var avail = H - pd - pd_b - GAP - GAP; // 可用高度（去掉上下padding和子图间距）
+  var ph1 = avail * PIN1;
+  var ph2 = avail * PIN2;
+  var ph3 = avail * PIN3;
+
+  // 各子图起始Y
+  var y1 = pd;
+  var y2 = y1 + ph1 + GAP;
+  var y3 = y2 + ph2 + GAP;
 
   var visN = Math.max(10, Math.floor(n / scale));
   var i0 = Math.floor(offset);
@@ -219,297 +222,79 @@ function draw(){{
 
   function xp(i){{ return pd + (i-i0)/(i1-i0)*pw }}
 
-  // ========== 主图 ==========
+  // ====== 主图 ======
   var mn1 = 1e9, mx1 = -1e9;
-  for(var i=i0;i<i1;i++){{
-    if(D.lo[i] < mn1) mn1 = D.lo[i];
-    if(D.hi[i] > mx1) mx1 = D.hi[i];
-  }}
+  for(var i=i0;i<i1;i++){{ if(D.lo[i] < mn1) mn1 = D.lo[i]; if(D.hi[i] > mx1) mx1 = D.hi[i]; }}
   var rg1 = mx1 - mn1 || 1;
-  function yp1(v){{ return pd + ph1 - (v-mn1)/rg1*ph1 }}
+  function yp1(v){{ return y1 + ph1 - (v-mn1)/rg1*ph1 }}
 
-  // 主图网格
-  ctx.strokeStyle = "#222";
-  ctx.lineWidth = 0.5;
-  for(var g=0;g<5;g++){{
-    var yy = pd + g*ph1/4;
-    ctx.beginPath(); ctx.moveTo(pd,yy); ctx.lineTo(pd+pw,yy); ctx.stroke();
-    ctx.fillStyle = "#666";
-    ctx.font = "7px Arial";
-    ctx.textAlign = "end";
-    ctx.fillText(Math.round(mn1 + (1-g/4)*rg1), pd-2, yy+3);
-  }}
+  ctx.strokeStyle = "#222"; ctx.lineWidth = 0.5;
+  for(var g=0;g<5;g++){{ var yy = y1 + g*ph1/4; ctx.beginPath(); ctx.moveTo(pd,yy); ctx.lineTo(pd+pw,yy); ctx.stroke(); ctx.fillStyle="#666"; ctx.font="7px Arial"; ctx.textAlign="end"; ctx.fillText(Math.round(mn1+(1-g/4)*rg1), pd-2, yy+3); }}
 
-  function poly1(arr, color, w, dash){{
-    ctx.strokeStyle = color;
-    ctx.lineWidth = w;
-    ctx.setLineDash(dash ? [3,2] : []);
-    ctx.beginPath();
-    var started = false;
-    for(var i=i0;i<i1;i++){{
-      if(arr[i]==null){{ started=false; continue; }}
-      var xx = xp(i), yy = yp1(arr[i]);
-      if(!started){{ ctx.moveTo(xx,yy); started=true; }}
-      else ctx.lineTo(xx,yy);
-    }}
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }}
+  function poly1(arr,c,w,d){{ ctx.strokeStyle=c; ctx.lineWidth=w; ctx.setLineDash(d?[3,2]:[]); ctx.beginPath(); var s=false; for(var i=i0;i<i1;i++){{ if(arr[i]==null){{s=false;continue;}} var xx=xp(i),yy=yp1(arr[i]); if(!s){{ctx.moveTo(xx,yy);s=true;}}else ctx.lineTo(xx,yy); }} ctx.stroke(); ctx.setLineDash([]); }}
+  function fillCloud(d1,d2,cl){{ ctx.fillStyle=cl; ctx.beginPath(); for(var i=i0;i<i1;i++){{ if(d1[i]==null||d2[i]==null) continue; ctx.lineTo(xp(i),yp1(d1[i])); }} for(var i=i1-1;i>=i0;i--){{ if(d1[i]==null||d2[i]==null) continue; ctx.lineTo(xp(i),yp1(d2[i])); }} ctx.closePath(); ctx.fill(); }}
 
-  function fillCloud1(d1, d2, color){{
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    for(var i=i0;i<i1;i++){{
-      if(d1[i]==null||d2[i]==null) continue;
-      ctx.lineTo(xp(i), yp1(d1[i]));
-    }}
-    for(var i=i1-1;i>=i0;i--){{
-      if(d1[i]==null||d2[i]==null) continue;
-      ctx.lineTo(xp(i), yp1(d2[i]));
-    }}
-    ctx.closePath();
-    ctx.fill();
-  }}
+  ctx.save(); ctx.beginPath(); ctx.rect(pd, y1, pw, ph1); ctx.clip();
+  for(var i=i0;i<i1;i++){{ var j=i; while(j<i1&&D.sa_[j]!=null&&D.sb_[j]!=null) j++; if(j>i){{ var b=D.sa_[i]>=D.sb_[i]; fillCloud(D.sa_,D.sb_,b?"rgba(255,107,53,0.18)":"rgba(42,111,156,0.18)"); }} i=j; }}
+  poly1(D.sa_,"#ff6b35",1.2); poly1(D.sb_,"#2a6f9c",1.2);
+  poly1(D.ub,"#aa843e",0.5,true); poly1(D.lb,"#aa843e",0.5,true); poly1(D.boll,"#aa843e",1);
+  poly1(D.ma300,"#ffd700",1.5); poly1(D.ub1,"#ffd700",0.5,true); poly1(D.lb1,"#ffd700",0.5,true);
+  poly1(D.ub2,"#666",0.5,true); poly1(D.lb2,"#666",0.5,true);
+  poly1(D.ema5,"#fff",1.2); poly1(D.ma50,"#0f0",1.2); poly1(D.ma100,"#f44",1.5);
 
-  // 主图框 clip — 防止指标跑出绘图区
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(pd, pd, pw, ph1);
-  ctx.clip();
+  var cw2=Math.max(1,Math.min(8,pw/(i1-i0)-1)), hw2=cw2/2;
+  for(var i=i0;i<i1;i++){{ var x=xp(i); var col=D.op[i]<D.cl[i]?"#ff4444":"#00c853"; ctx.strokeStyle=col; ctx.lineWidth=0.8; ctx.beginPath();ctx.moveTo(x,yp1(D.hi[i]));ctx.lineTo(x,yp1(D.lo[i]));ctx.stroke(); ctx.fillStyle=col; ctx.fillRect(x-hw2,Math.min(yp1(D.op[i]),yp1(D.cl[i])),cw2,Math.max(1,Math.abs(yp1(D.cl[i])-yp1(D.op[i])))); }}
 
-  // 云层
-  for(var i=i0;i<i1;i++){{
-    var j=i;
-    while(j<i1 && D.sa_[j]!=null && D.sb_[j]!=null) j++;
-    if(j>i){{
-      var bullish = D.sa_[i] >= D.sb_[i];
-      fillCloud1(D.sa_, D.sb_, bullish ? "rgba(255,107,53,0.18)" : "rgba(42,111,156,0.18)");
-    }}
-    i=j;
-  }}
+  ctx.font="12px Arial"; ctx.textAlign="center";
+  for(var i=Math.max(1,i0);i<i1;i++){{ if(D.sa_[i]==null||D.sb_[i]==null||D.sa_[i-1]==null||D.sb_[i-1]==null) continue; if(D.sa_[i-1]<=D.sb_[i-1]&&D.sa_[i]>D.sb_[i]){{ctx.fillStyle="#ff6b35"; ctx.fillText("▲",xp(i),yp1(D.hi[i])-2);}} if(D.sa_[i-1]>=D.sb_[i-1]&&D.sa_[i]<D.sb_[i]){{ctx.fillStyle="#2a6f9c"; ctx.fillText("▼",xp(i),yp1(D.lo[i])+12);}} }}
+  ctx.restore(); ctx.strokeStyle="#333"; ctx.lineWidth=1; ctx.strokeRect(pd, y1, pw, ph1);
 
-  poly1(D.sa_, "#ff6b35", 1.2);
-  poly1(D.sb_, "#2a6f9c", 1.2);
-  poly1(D.ub, "#aa843e", 0.5, true);
-  poly1(D.lb, "#aa843e", 0.5, true);
-  poly1(D.boll, "#aa843e", 1);
-  poly1(D.ma300, "#ffd700", 1.5);
-  poly1(D.ub1, "#ffd700", 0.5, true);
-  poly1(D.lb1, "#ffd700", 0.5, true);
-  poly1(D.ub2, "#666", 0.5, true);
-  poly1(D.lb2, "#666", 0.5, true);
-  poly1(D.ema5, "#fff", 1.2);
-  poly1(D.ma50, "#0f0", 1.2);
-  poly1(D.ma100, "#f44", 1.5);
+  // ====== MACD ======
+  ctx.strokeStyle="#333"; ctx.lineWidth=0.5; ctx.beginPath(); ctx.moveTo(pd,y2-GAP/2); ctx.lineTo(pd+pw,y2-GAP/2); ctx.stroke();
+  ctx.fillStyle="#888"; ctx.font="9px Arial"; ctx.textAlign="left"; ctx.fillText("MACD(12,26,9)", pd+4, y2-GAP/2+11);
+  var mn2=0,mx2=0,hasM=false; for(var i=i0;i<i1;i++){{ if(D.macd[i]==null) continue; hasM=true; if(D.macd[i]<mn2)mn2=D.macd[i];if(D.macd[i]>mx2)mx2=D.macd[i];if(D.dif[i]<mn2)mn2=D.dif[i];if(D.dif[i]>mx2)mx2=D.dif[i];if(D.dea[i]<mn2)mn2=D.dea[i];if(D.dea[i]>mx2)mx2=D.dea[i]; }}
+  if(!hasM){{mn2=-10;mx2=10;}} var p2=Math.max(Math.abs(mx2-mn2)*0.15,1); mn2-=p2; mx2+=p2; var rg2=mx2-mn2||1;
+  function yp2(v){{return Math.max(y2,Math.min(y2+ph2,y2+ph2-(v-mn2)/rg2*ph2));}}
+  ctx.save(); ctx.beginPath(); ctx.rect(pd, y2, pw, ph2); ctx.clip();
+  ctx.strokeStyle="#222"; ctx.lineWidth=0.5; ctx.beginPath(); ctx.moveTo(pd,yp2(0)); ctx.lineTo(pd+pw,yp2(0)); ctx.stroke();
+  for(var i=i0;i<i1;i++){{if(D.macd[i]==null)continue; var x=xp(i),y0=yp2(0),yv=yp2(D.macd[i]); ctx.fillStyle=D.macd[i]>=0?"#f44":"#00c853"; ctx.fillRect(x-hw2*0.6,Math.min(y0,yv),cw2*0.6,Math.max(0.5,Math.abs(yv-y0)));}}
+  function poly2(a,c,w,d){{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.setLineDash(d?[3,2]:[]);ctx.beginPath();var s=false;for(var i=i0;i<i1;i++){{if(a[i]==null){{s=false;continue;}}var xx=xp(i),yy=yp2(a[i]);if(!s){{ctx.moveTo(xx,yy);s=true;}}else ctx.lineTo(xx,yy);}}ctx.stroke();ctx.setLineDash([]);}}
+  poly2(D.dif,"#fff",1); poly2(D.dea,"#ffd700",1,true);
+  ctx.fillStyle="#666"; ctx.font="7px Arial"; ctx.textAlign="end"; ctx.fillText(mx2.toFixed(1),pd-2,yp2(mx2)+3); ctx.fillText(mn2.toFixed(1),pd-2,yp2(mn2)+3);
+  ctx.restore(); ctx.strokeStyle="#333"; ctx.lineWidth=1; ctx.strokeRect(pd, y2, pw, ph2);
 
-  // K线
-  var cw2 = Math.max(1, Math.min(8, pw/(i1-i0)-1));
-  var hw2 = cw2/2;
-  for(var i=i0;i<i1;i++){{
-    var x = xp(i);
-    var col = D.op[i] < D.cl[i] ? "#ff4444" : "#00c853";
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 0.8;
-    ctx.beginPath(); ctx.moveTo(x,yp1(D.hi[i])); ctx.lineTo(x,yp1(D.lo[i])); ctx.stroke();
-    ctx.fillStyle = col;
-    ctx.fillRect(x-hw2, Math.min(yp1(D.op[i]),yp1(D.cl[i])), cw2, Math.max(1, Math.abs(yp1(D.cl[i])-yp1(D.op[i]))));
-  }}
+  // ====== 成交量 ======
+  ctx.strokeStyle="#333"; ctx.lineWidth=0.5; ctx.beginPath(); ctx.moveTo(pd,y3-GAP/2); ctx.lineTo(pd+pw,y3-GAP/2); ctx.stroke();
+  ctx.fillStyle="#888"; ctx.font="9px Arial"; ctx.textAlign="left"; ctx.fillText("VOL", pd+4, y3-GAP/2+11);
 
-  // 信号
-  ctx.font = "12px Arial";
-  ctx.textAlign = "center";
-  for(var i=Math.max(1,i0);i<i1;i++){{
-    if(D.sa_[i]==null||D.sb_[i]==null||D.sa_[i-1]==null||D.sb_[i-1]==null) continue;
-    if(D.sa_[i-1]<=D.sb_[i-1]&&D.sa_[i]>D.sb_[i])
-      {{ctx.fillStyle="#ff6b35"; ctx.fillText("▲", xp(i), yp1(D.hi[i])-2);}}
-    if(D.sa_[i-1]>=D.sb_[i-1]&&D.sa_[i]<D.sb_[i])
-      {{ctx.fillStyle="#2a6f9c"; ctx.fillText("▼", xp(i), yp1(D.lo[i])+12);}}
-  }}
+  var mn3=1e9,mx3=-1e9;
+  for(var i=i0;i<i1;i++){{ if(D.vo[i]==null) continue; if(D.vo[i]<mn3)mn3=D.vo[i]; if(D.vo[i]>mx3)mx3=D.vo[i]; }}
+  var rg3 = (mx3 - mn3) || 1;
+  function yp3(v){{ return y3 + ph3 - (v-mn3)/rg3*ph3; }}
+  ctx.save(); ctx.beginPath(); ctx.rect(pd, y3, pw, ph3); ctx.clip();
+  for(var i=i0;i<i1;i++){{ if(D.vo[i]==null) continue; var x=xp(i),y0=y3+ph3,yv=yp3(D.vo[i]); var col=D.op[i]<D.cl[i]?"#ff4444":"#00c853"; ctx.fillStyle=col; ctx.fillRect(x-hw2, Math.min(y0,yv), cw2, Math.max(0.5, Math.abs(yv-y0))); }}
+  ctx.fillStyle="#666"; ctx.font="7px Arial"; ctx.textAlign="end"; ctx.fillText(formatVol(mx3), pd-2, y3+9); ctx.fillText("0", pd-2, y3+ph3+3);
+  ctx.restore(); ctx.strokeStyle="#333"; ctx.lineWidth=1; ctx.strokeRect(pd, y3, pw, ph3);
 
-  // 主图边框（在 clip 之后画）
-  ctx.restore();
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([]);
-  ctx.strokeRect(pd, pd, pw, ph1);
-
-  // ========== 分隔线 + MACD 标签 ==========
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth = 0.5;
-  ctx.beginPath(); ctx.moveTo(pd, gapY); ctx.lineTo(pd+pw, gapY); ctx.stroke();
-  ctx.fillStyle = "#888";
-  ctx.font = "9px Arial";
-  ctx.textAlign = "left";
-  ctx.fillText("MACD(12,26,9)", pd+4, gapY+11);
-
-  // ========== MACD 副图 ==========
-  // 找 dif/DEA/MACD 的范围 + 额外 padding
-  var mn2 = 0, mx2 = 0;
-  var hasMacd = false;
-  for(var i=i0;i<i1;i++){{
-    if(D.macd[i]==null) continue;
-    hasMacd = true;
-    if(D.macd[i] < mn2) mn2 = D.macd[i];
-    if(D.macd[i] > mx2) mx2 = D.macd[i];
-    if(D.dif[i] < mn2) mn2 = D.dif[i];
-    if(D.dif[i] > mx2) mx2 = D.dif[i];
-    if(D.dea[i] < mn2) mn2 = D.dea[i];
-    if(D.dea[i] > mx2) mx2 = D.dea[i];
-  }}
-  if(!hasMacd) {{ mn2 = -10; mx2 = 10; }}
-  var padding2 = Math.max(Math.abs(mx2 - mn2) * 0.15, Math.abs(mx2 - mn2) * 0.15 || 1);
-  mn2 -= padding2; mx2 += padding2;
-  var rg2 = mx2 - mn2 || 1;
-  // y 值严格限制在副图框内
-  function yp2(v){{ return Math.max(macdY0, Math.min(macdY0 + ph2, macdY0 + ph2 - (v-mn2)/rg2*ph2)); }}
-
-  // 裁剪区 — 确保 MACD 内容不超出副图框
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(pd, macdY0, pw, ph2);
-  ctx.clip();
-
-  // MACD网格
-  ctx.strokeStyle = "#222";
-  ctx.lineWidth = 0.5;
-  ctx.beginPath(); ctx.moveTo(pd, yp2(0)); ctx.lineTo(pd+pw, yp2(0)); ctx.stroke();
-
-  // MACD柱
-  for(var i=i0;i<i1;i++){{
-    if(D.macd[i]==null) continue;
-    var x = xp(i);
-    var y0 = yp2(0);
-    var yv = yp2(D.macd[i]);
-    var col = D.macd[i] >= 0 ? "#f44" : "#00c853";
-    ctx.fillStyle = col;
-    ctx.fillRect(x-hw2*0.6, Math.min(y0, yv), cw2*0.6, Math.max(0.5, Math.abs(yv-y0)));
-  }}
-
-  // MACD 线 — 单独用 poly2（使用 yp2）
-  function poly2(arr, color, w, dash){{
-    ctx.strokeStyle = color;
-    ctx.lineWidth = w;
-    ctx.setLineDash(dash ? [3,2] : []);
-    ctx.beginPath();
-    var started = false;
-    for(var i=i0;i<i1;i++){{
-      if(arr[i]==null){{ started=false; continue; }}
-      var xx = xp(i), yy = yp2(arr[i]);
-      if(!started){{ ctx.moveTo(xx,yy); started=true; }}
-      else ctx.lineTo(xx,yy);
-    }}
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }}
-  poly2(D.dif, "#fff", 1);
-  poly2(D.dea, "#ffd700", 1, true);
-
-  // MACD 刻度
-  ctx.fillStyle = "#666";
-  ctx.font = "7px Arial";
-  ctx.textAlign = "end";
-  ctx.fillText(mx2.toFixed(1), pd-2, yp2(mx2)+3);
-  ctx.fillText(mn2.toFixed(1), pd-2, yp2(mn2)+3);
-
-  // MACD 边框（在 clip 之后画边框，确保线条清晰）
-  ctx.restore();
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(pd, macdY0, pw, ph2);
-
-  // ========== 共享日期轴（放在MACD下方） ==========
-  ctx.fillStyle = "#999";
-  ctx.textAlign = "center";
-  var visDays = i1 - i0;
-  var labelW = 38;
-  var labelStep = Math.max(1, Math.floor(labelW * visDays / pw));
-  var lastYearShown = "";
-  for(var i=i0;i<i1;i+=labelStep){{
-    var dateStr = D.ds[i];
-    var parts = dateStr.split("-");
-    var mmdd = parts[1] + parts[2];
-    var yyyy = parts[0];
-    var xx = xp(i);
-    ctx.font = "7px Arial";
-    var dateY = macdY0 + ph2 + 12;
-    ctx.fillText(mmdd, xx, dateY);
-    if(yyyy !== lastYearShown){{
-      ctx.fillText(yyyy, xx, dateY + 10);
-      lastYearShown = yyyy;
-    }}
-  }}
+  // ====== 日期轴 ======
+  ctx.fillStyle="#999"; ctx.textAlign="center";
+  var labelStep=Math.max(1,Math.floor(38*(i1-i0)/pw));
+  var lastYear="";
+  for(var i=i0;i<i1;i+=labelStep){{ var ds=D.ds[i],p=ds.split("-"),md=p[1]+p[2],yy=p[0],xx=xp(i); ctx.font="7px Arial"; var dy=y3+ph3+10; ctx.fillText(md,xx,dy); if(yy!==lastYear){{ctx.fillText(yy,xx,dy+10);lastYear=yy;}} }}
 }}
 
-// 触摸手势
-var isDragging = false;
-var dragStartX = 0, dragStartOff = 0;
-var lastDist = 0;
+function formatVol(v){{ if(v>=1e8) return (v/1e8).toFixed(1)+"亿"; if(v>=1e4) return (v/1e4).toFixed(1)+"万"; return v.toFixed(0); }}
 
-c.addEventListener("touchstart", function(e){{
-  e.preventDefault();
-  var t = e.touches;
-  if(t.length==1){{
-    isDragging = true; dragStartX = t[0].clientX; dragStartOff = offset;
-  }} else if(t.length==2){{
-    isDragging = false;
-    lastDist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
-  }}
-}}, {{passive:false}});
-
-c.addEventListener("touchmove", function(e){{
-  e.preventDefault();
-  var t = e.touches;
-  if(t.length==1 && isDragging){{
-    var dx = (t[0].clientX - dragStartX) / W;
-    offset = dragStartOff - dx * n / scale;
-    draw();
-  }} else if(t.length==2){{
-    var dist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
-    var s = dist / Math.max(1, lastDist);
-    var cx = (t[0].clientX+t[1].clientX)/2;
-    var cxRatio = cx / W;
-    var oldScale = scale;
-    scale = clamp(scale * s, 1, 50);
-    s = scale / oldScale;
-    var centerIdx = offset + cxRatio * n / oldScale;
-    offset = centerIdx - cxRatio * n / scale;
-    if(offset < 0) offset = 0;
-    if(offset > n - n/scale) offset = n - n/scale;
-    lastDist = dist;
-    draw();
-  }}
-}}, {{passive:false}});
-
-c.addEventListener("touchend", function(e){{ isDragging=false; }});
-
-c.addEventListener("wheel", function(e){{
-  e.preventDefault();
-  var r = c.getBoundingClientRect();
-  var cx = (e.clientX - r.left) / W;
-  var oldScale = scale;
-  scale = clamp(scale * (1 - e.deltaY*0.001), 1, 50);
-  var s = scale / oldScale;
-  var centerIdx = offset + cx * n / oldScale;
-  offset = centerIdx - cx * n / scale;
-  if(offset < 0) offset = 0;
-  if(offset > n - n/scale) offset = n - n/scale;
-  draw();
-}}, {{passive:false}});
-
-c.addEventListener("mousedown", function(e){{
-  isDragging = true; dragStartX = e.clientX; dragStartOff = offset;
-}});
-window.addEventListener("mousemove", function(e){{
-  if(!isDragging) return;
-  var dx = (e.clientX - dragStartX) / W;
-  offset = dragStartOff - dx * n / scale;
-  if(offset < 0) offset = 0;
-  if(offset > n - n/scale) offset = n - n/scale;
-  draw();
-}});
-window.addEventListener("mouseup", function(){{ isDragging=false; }});
-
-window.addEventListener("resize", resize);
+// touch / mouse handlers
+var isDragging=false, dragStartX=0, dragStartOff=0, lastDist=0;
+c.addEventListener("touchstart",function(e){{e.preventDefault();var t=e.touches;if(t.length==1){{isDragging=true;dragStartX=t[0].clientX;dragStartOff=offset;}}else if(t.length==2){{isDragging=false;lastDist=Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);}}}},{{passive:false}});
+c.addEventListener("touchmove",function(e){{e.preventDefault();var t=e.touches;if(t.length==1&&isDragging){{var dx=(t[0].clientX-dragStartX)/W;offset=dragStartOff-dx*n/scale;draw();}}else if(t.length==2){{var dist=Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);var s=dist/Math.max(1,lastDist);var cx=(t[0].clientX+t[1].clientX)/2;var cr=cx/W;var os=scale;scale=clamp(scale*s,1,50);s=scale/os;var ci=offset+cr*n/os;offset=ci-cr*n/scale;if(offset<0)offset=0;if(offset>n-n/scale)offset=n-n/scale;lastDist=dist;draw();}}}},{{passive:false}});
+c.addEventListener("touchend",function(e){{isDragging=false;}});
+c.addEventListener("wheel",function(e){{e.preventDefault();var r=c.getBoundingClientRect();var cx=(e.clientX-r.left)/W;var os=scale;scale=clamp(scale*(1-e.deltaY*0.001),1,50);var s=scale/os;var ci=offset+cx*n/os;offset=ci-cx*n/scale;if(offset<0)offset=0;if(offset>n-n/scale)offset=n-n/scale;draw();}},{{passive:false}});
+c.addEventListener("mousedown",function(e){{isDragging=true;dragStartX=e.clientX;dragStartOff=offset;}});
+window.addEventListener("mousemove",function(e){{if(!isDragging)return;var dx=(e.clientX-dragStartX)/W;offset=dragStartOff-dx*n/scale;if(offset<0)offset=0;if(offset>n-n/scale)offset=n-n/scale;draw();}});
+window.addEventListener("mouseup",function(){{isDragging=false;}});
+window.addEventListener("resize",resize);
 resize();
 
 }})();

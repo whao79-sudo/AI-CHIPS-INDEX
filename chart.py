@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Canvas K线图渲染 - 支持日线/两日/周线切换 + 成交量"""
+"""Canvas K线图渲染 - 支持日线/两日/周线切换 + 成交量 + MACD占比"""
 from datetime import datetime
 import json
 
 
-def gen_kline_html(df, ind, title, stocks_list, vo, wdf=None, w_ind=None, d2df=None, d2_ind=None):
+def gen_kline_html(df, ind, title, stocks_list, vo, macd_ratio, wdf=None, w_ind=None, d2df=None, d2_ind=None):
     ds = df["date"].tolist()
     op = df["open"].tolist()
     hi = df["high"].tolist()
@@ -12,11 +12,12 @@ def gen_kline_html(df, ind, title, stocks_list, vo, wdf=None, w_ind=None, d2df=N
     cl = df["close"].tolist()
     lt = df.iloc[-1]
     n = len(ds)
+    mr = macd_ratio  # MACD > 0 占比列表（与日线对齐）
 
     sn = "、".join([s["name"] for s in stocks_list])
 
     data = {
-        "ds": ds, "op": op, "hi": hi, "lo": lo, "cl": cl, "vo": vo,
+        "ds": ds, "op": op, "hi": hi, "lo": lo, "cl": cl, "vo": vo, "mr": mr,
         "sa_": ind["sa_"], "sb_": ind["sb_"],
         "tenkan": ind["tenkan"], "kijun": ind["kijun"],
         "boll": ind["boll"], "ub": ind["ub"], "lb": ind["lb"],
@@ -34,6 +35,7 @@ def gen_kline_html(df, ind, title, stocks_list, vo, wdf=None, w_ind=None, d2df=N
             "ds": wdf["date"].tolist(),
             "op": wdf["open"].tolist(), "hi": wdf["high"].tolist(),
             "lo": wdf["low"].tolist(), "cl": wdf["close"].tolist(), "vo": wv,
+            "mr": mr,  # 多周期共享同一个 mr（按日期对齐）
             "sa_": w_ind["sa_"], "sb_": w_ind["sb_"],
             "tenkan": w_ind["tenkan"], "kijun": w_ind["kijun"],
             "boll": w_ind["boll"], "ub": w_ind["ub"], "lb": w_ind["lb"],
@@ -51,6 +53,7 @@ def gen_kline_html(df, ind, title, stocks_list, vo, wdf=None, w_ind=None, d2df=N
             "ds": d2df["date"].tolist(),
             "op": d2df["open"].tolist(), "hi": d2df["high"].tolist(),
             "lo": d2df["low"].tolist(), "cl": d2df["close"].tolist(), "vo": d2v,
+            "mr": mr,
             "sa_": d2_ind["sa_"], "sb_": d2_ind["sb_"],
             "tenkan": d2_ind["tenkan"], "kijun": d2_ind["kijun"],
             "boll": d2_ind["boll"], "ub": d2_ind["ub"], "lb": d2_ind["lb"],
@@ -135,6 +138,7 @@ canvas{{display:block;width:100%;height:auto;touch-action:none}}
 <span style="color:#f44">MACD+</span>
 <span style="color:#00c853">MACD-</span>
 <span style="border-left:3px solid #ff6600;color:#ff6600">量</span>
+<span style="color:#ff4444">MACD>0%</span>
 </div>
 <div class="cwrap">
 <canvas id="kc"></canvas>
@@ -173,8 +177,9 @@ var ctx = c.getContext("2d");
 var W, H;
 var pd=25, pd_b=35, scale=1, offset=0, isInit=true, n=0;
 var PIN1 = 0.55; // 主图 55%
-var PIN2 = 0.22; // MACD 22%
-var PIN3 = 0.23; // 量  23%
+var PIN2 = 0.20; // MACD 20%
+var PIN3 = 0.17; // 量  17%
+var PIN4 = 0.08; // MACD占比 8%
 var INITIAL_VIS = 60;
 var GAP = 12;    // 子图间距
 
@@ -206,15 +211,17 @@ function draw(){{
   if(n<2) return;
 
   var pw = W - pd - pd;
-  var avail = H - pd - pd_b - GAP - GAP; // 可用高度（去掉上下padding和子图间距）
+  var avail = H - pd - pd_b - GAP - GAP - GAP; // 主图+MACD+量+MR 共4子图，3个间距
   var ph1 = avail * PIN1;
   var ph2 = avail * PIN2;
   var ph3 = avail * PIN3;
+  var ph4 = avail * PIN4;
 
   // 各子图起始Y
   var y1 = pd;
   var y2 = y1 + ph1 + GAP;
   var y3 = y2 + ph2 + GAP;
+  var y4 = y3 + ph3 + GAP;
 
   var visN = Math.max(10, Math.floor(n / scale));
   var i0 = Math.floor(offset);
@@ -278,11 +285,25 @@ function draw(){{
   ctx.fillStyle="#666"; ctx.font="7px Arial"; ctx.textAlign="end"; ctx.fillText(formatVol(mx3), pd-2, y3+9); ctx.fillText("0", pd-2, y3+ph3+3);
   ctx.restore(); ctx.strokeStyle="#333"; ctx.lineWidth=1; ctx.strokeRect(pd, y3, pw, ph3);
 
+  // ====== MACD 占比 ======
+  ctx.strokeStyle="#333"; ctx.lineWidth=0.5; ctx.beginPath(); ctx.moveTo(pd,y4-GAP/2); ctx.lineTo(pd+pw,y4-GAP/2); ctx.stroke();
+  ctx.fillStyle="#888"; ctx.font="9px Arial"; ctx.textAlign="left"; ctx.fillText("MACD>0%", pd+4, y4-GAP/2+11);
+  var mn4=0,mx4=100;
+  var rg4=100;
+  function yp4(v){{return y4+ph4-(v-mn4)/rg4*ph4;}}
+  ctx.save(); ctx.beginPath(); ctx.rect(pd, y4, pw, ph4); ctx.clip();
+  ctx.font="7px Arial"; ctx.textAlign="right";
+  ctx.fillStyle="#555"; ctx.fillText("100%",pd-2,yp4(0)-1); ctx.fillText("0%",pd-2,yp4(100)+8);
+  ctx.strokeStyle="#222"; ctx.lineWidth=0.5; ctx.strokeRect(pd,yp4(50),pw,0); ctx.fillStyle="rgba(100,100,100,0.15)"; ctx.fillRect(pd,yp4(50),pw,yp4(0)-yp4(50));
+  ctx.fillStyle="rgba(255,50,50,0.15)"; ctx.fillRect(pd,yp4(100),pw,yp4(50)-yp4(100));
+  for(var i=i0;i<i1;i++){{ if(D.mr[i]==null) continue; var x=xp(i),yv=yp4(D.mr[i]); ctx.fillStyle=D.mr[i]>=50?"#ff4444":"#00c853"; ctx.fillRect(x-1,yv,2,Math.max(1,yp4(0)-yv)); }}
+  ctx.restore(); ctx.strokeStyle="#333"; ctx.lineWidth=1; ctx.strokeRect(pd, y4, pw, ph4);
+
   // ====== 日期轴 ======
   ctx.fillStyle="#999"; ctx.textAlign="center";
   var labelStep=Math.max(1,Math.floor(38*(i1-i0)/pw));
   var lastYear="";
-  for(var i=i0;i<i1;i+=labelStep){{ var ds=D.ds[i],p=ds.split("-"),md=p[1]+p[2],yy=p[0],xx=xp(i); ctx.font="7px Arial"; var dy=y3+ph3+10; ctx.fillText(md,xx,dy); if(yy!==lastYear){{ctx.fillText(yy,xx,dy+10);lastYear=yy;}} }}
+  for(var i=i0;i<i1;i+=labelStep){{ var ds=D.ds[i],p=ds.split("-"),md=p[1]+p[2],yy=p[0],xx=xp(i); ctx.font="7px Arial"; var dy=y4+ph4+10; ctx.fillText(md,xx,dy); if(yy!==lastYear){{ctx.fillText(yy,xx,dy+10);lastYear=yy;}} }}
 }}
 
 function formatVol(v){{ if(v>=1e8) return (v/1e8).toFixed(1)+"亿"; if(v>=1e4) return (v/1e4).toFixed(1)+"万"; return v.toFixed(0); }}

@@ -6,6 +6,7 @@ import yaml
 import os
 import sys
 import importlib
+import numpy as np
 import baostock as bs
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -68,6 +69,40 @@ def fetch_sina(code, datalen=1000):
     except Exception as e:
         print("    Sina fail:", e)
         return None
+
+
+def calc_individual_ratios(sdf):
+    """计算每只股票的 MACD 值，返回按日期聚合的 MACD > 0 占比序列
+    sdf: stocks_history 格式的 DataFrame (有 code, date, close 等列)
+    返回: DataFrame[date, macd_gt0_count, macd_gt0_pct]
+    """
+    def _macd(cl):
+        arr = np.array(cl, dtype=float)
+        ema12 = pd.Series(arr).ewm(span=12, adjust=False).mean().values
+        ema26 = pd.Series(arr).ewm(span=26, adjust=False).mean().values
+        dif = ema12 - ema26
+        dea = pd.Series(dif).ewm(span=9, adjust=False).mean().values
+        return 2 * (dif - dea)
+
+    d = sdf.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    d = d.sort_values(["code", "date"])
+
+    # 按股票计算 MACD，汇总按日期
+    stock_macd = {}
+    for code, grp in d.groupby("code"):
+        grp = grp.sort_values("date")
+        macd_vals = _macd(grp["close"].tolist())
+        stock_macd[code] = dict(zip(grp["date"].dt.strftime("%Y-%m-%d"), macd_vals))
+
+    dates = sorted(set(d["date"].dt.strftime("%Y-%m-%d")))
+    results = []
+    total = len({k for k in stock_macd.keys()})
+    for dt in dates:
+        gt0 = sum(1 for s in stock_macd if stock_macd[s].get(dt, 0) > 0)
+        pct = round(gt0 / total * 100, 1)
+        results.append({"date": dt, "macd_gt0_count": gt0, "macd_gt0_pct": pct})
+    return pd.DataFrame(results)
 
 
 class IndexGenerator:
@@ -211,7 +246,7 @@ class IndexGenerator:
         g["date"] = g["_dt"].dt.strftime("%Y-%m-%d")
         return g[["date", "open", "high", "low", "close", "volume"]]
 
-    def gen_html(self, df, wdf, d2df, title="AI CHIP INDEX"):
+    def gen_html(self, df, wdf, d2df, macd_ratio, title="AI CHIP INDEX"):
         cl = df["close"].tolist()
         hi = df["high"].tolist()
         lo = df["low"].tolist()
@@ -219,7 +254,7 @@ class IndexGenerator:
         ind = calc_indicators(cl, hi, lo)
         w_ind = calc_indicators(wdf["close"].tolist(), wdf["high"].tolist(), wdf["low"].tolist()) if wdf is not None else None
         d2_ind = calc_indicators(d2df["close"].tolist(), d2df["high"].tolist(), d2df["low"].tolist()) if d2df is not None else None
-        return gen_kline_html(df, ind, title, self.stocks, vo, wdf=wdf, w_ind=w_ind, d2df=d2df, d2_ind=d2_ind)
+        return gen_kline_html(df, ind, title, self.stocks, vo, macd_ratio, wdf=wdf, w_ind=w_ind, d2df=d2df, d2_ind=d2_ind)
 
     def save(self, sdf, idf):
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -235,7 +270,10 @@ class IndexGenerator:
         # 计算周线、两日线
         wdf = self.calc_weekly_index(sdf)
         d2df = self.calc_2day_index(sdf)
-        html = self.gen_html(idf, wdf, d2df)
+        # 计算 MACD 占比
+        mratio = calc_individual_ratios(sdf)
+        mr_vals = mratio["macd_gt0_pct"].tolist()  # 与日线对齐
+        html = self.gen_html(idf, wdf, d2df, mr_vals)
         with open(
             self.output_dir / "AI_CHIP_INDEX_kline.html",
             "w", encoding="utf-8") as f:

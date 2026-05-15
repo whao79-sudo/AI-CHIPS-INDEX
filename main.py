@@ -105,6 +105,28 @@ def calc_individual_ratios(sdf):
     return pd.DataFrame(results)
 
 
+def wavelet_denoise(arr, wavelet="db4", level=4, kill_layers=1):
+    """
+    小波去噪：DWT → 去掉最细的 kill_layers 层高频 → 重构
+    对成交量做去噪，保留趋势性量能变化，过滤随机脉冲
+    """
+    import pywt
+    a = np.array(arr, dtype=float)
+    n_orig = len(a)
+    from math import ceil, log2
+    n_pad = 2 ** ceil(log2(n_orig))
+    a_padded = np.pad(a, (0, n_pad - n_orig), mode="reflect")
+    w = pywt.Wavelet(wavelet)
+    coeffs = pywt.wavedec(a_padded, w, level=level)
+    for i in range(1, kill_layers + 1):
+        coeffs[-i] = np.zeros_like(coeffs[-i])
+    rec = pywt.waverec(coeffs, w)[:n_orig]
+    # 缩放保持最大幅度不变
+    if np.max(rec) > 0 and np.max(a) > 0:
+        rec = rec * (np.max(a) / np.max(rec))
+    return rec.tolist()
+
+
 class IndexGenerator:
     def __init__(self, config_path="config.yaml"):
         self.config = self._load_config(config_path)
@@ -250,7 +272,7 @@ class IndexGenerator:
         cl = df["close"].tolist()
         hi = df["high"].tolist()
         lo = df["low"].tolist()
-        vo = df["volume"].tolist()
+        vo = wavelet_denoise(df["volume"].tolist())
         ind = calc_indicators(cl, hi, lo)
         w_ind = calc_indicators(wdf["close"].tolist(), wdf["high"].tolist(), wdf["low"].tolist()) if wdf is not None else None
         d2_ind = calc_indicators(d2df["close"].tolist(), d2df["high"].tolist(), d2df["low"].tolist()) if d2df is not None else None

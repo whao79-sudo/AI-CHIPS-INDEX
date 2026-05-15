@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
 """AI Chip Index - 主程序"""
+
+# 自动安装缺失依赖（GHA 环境需要）
+import subprocess, sys
+for _pkg in [("pywt", "PyWavelets")]:
+    try:
+        __import__(_pkg[0])
+    except ImportError:
+        print(f"Installing {_pkg[1]}...")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", _pkg[1], "-q"])
+
 import pandas as pd
 import requests
 import yaml

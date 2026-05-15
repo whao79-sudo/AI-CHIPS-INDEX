@@ -174,8 +174,8 @@ var c = document.getElementById("kc");
 var ctx = c.getContext("2d");
 
 var W, H;
-var pd=25, pd_b=8, scale=1, offset=0, isInit=true, n=0;
-var MAIN_RATIO = 0.7; // 主图占70%，MACD占30%
+var pd=25, pd_b=35, scale=1, offset=0, isInit=true, n=0;
+var MAIN_RATIO = 0.68; // 主图68%，MACD副图+日期区32%
 var INITIAL_VIS = 60;
 
 function resize(){{

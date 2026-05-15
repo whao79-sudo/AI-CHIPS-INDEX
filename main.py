@@ -283,11 +283,14 @@ class IndexGenerator:
         cl = df["close"].tolist()
         hi = df["high"].tolist()
         lo = df["low"].tolist()
-        vo = wavelet_denoise(df["volume"].tolist())
+        vo_orig = df["volume"].tolist()  # 原始成交量
+        vo = wavelet_denoise(df["volume"].tolist())  # 小波去噪
         ind = calc_indicators(cl, hi, lo)
         w_ind = calc_indicators(wdf["close"].tolist(), wdf["high"].tolist(), wdf["low"].tolist()) if wdf is not None else None
         d2_ind = calc_indicators(d2df["close"].tolist(), d2df["high"].tolist(), d2df["low"].tolist()) if d2df is not None else None
-        return gen_kline_html(df, ind, title, self.stocks, vo, macd_ratio, wdf=wdf, w_ind=w_ind, d2df=d2df, d2_ind=d2_ind)
+        return gen_kline_html(df, ind, title, self.stocks, vo, macd_ratio,
+                              wdf=wdf, w_ind=w_ind, d2df=d2df, d2_ind=d2_ind,
+                              vo_orig=vo_orig)
 
     def save(self, sdf, idf):
         self.output_dir.mkdir(parents=True, exist_ok=True)

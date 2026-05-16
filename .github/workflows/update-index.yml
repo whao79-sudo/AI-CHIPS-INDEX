@@ -1,0 +1,34 @@
+name: AI Chip Index
+on:
+  schedule:
+    - cron: '0 8 * * 1-5'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install pandas numpy requests PyYAML baostock PyWavelets
+      - name: Download historical csv
+        run: |
+          if git show-ref --quiet refs/remotes/origin/gh-pages 2>/dev/null; then
+            git fetch origin gh-pages
+            git checkout gh-pages -- stocks_history.csv 2>/dev/null || true
+            git checkout gh-pages -- output/AI_CHIP_INDEX_stocks.csv 2>/dev/null || true
+          fi
+      - run: python main.py
+      - name: Prepare pages artifact
+        run: mv index.htm index.html 2>/dev/null || true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./
+      - uses: actions/deploy-pages@v4

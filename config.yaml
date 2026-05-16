@@ -1,6 +1,3 @@
-# AI Chip Index 配置文件
-
-# 成分股配置 (等权重)
 stocks:
   - {name: "中际旭创", code: "sz300308"}
   - {name: "新易盛", code: "sz300502"}
@@ -16,26 +13,9 @@ stocks:
   - {name: "德明利", code: "sz001309"}
   - {name: "江波龙", code: "sz301308"}
   - {name: "兆易创新", code: "sh603986"}
-
-# 指数配置
 index:
-  base_date: "2024-01-02"   # 基期日期
-  base_value: 1000.0        # 基点
-
-# 数据源配置
-data_source:
-  provider: "netease"       # netease|sina|tencent
-  timeout: 15               # 请求超时 (秒)
-  retry: 3                  # 重试次数
-
-# 输出配置
+  base_date: "2024-01-02"
+  base_value: 1000
 output:
-  dir: "./output"           # 输出目录
-  start_date: "2024-01-01"  # 开始日期
-  end_date: null            # 结束日期 (null=今天)
-  chart_title: "AI CHIP INDEX K 线图"
-
-# 日志配置
-logging:
-  level: "INFO"             # DEBUG|INFO|WARNING|ERROR
-  file: null                # 日志文件 (null=不保存)
+  dir: "./output"
+  start_date: "2024-01-01"
